@@ -1,6 +1,7 @@
 
-#ifndef __PID_H__
-#define __PID_H__
+#pragma once
+
+#include "Arduino.h"
 
 class PID
 {
@@ -54,5 +55,3 @@ class PID
   float output;
   float last_d_error;
 };
-
-#endif

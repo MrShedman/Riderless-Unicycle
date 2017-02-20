@@ -13,6 +13,12 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Header Files\VESC">
+      <UniqueIdentifier>{06d5be92-f1e8-4a9b-8b11-5f546612d4bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\VESC">
+      <UniqueIdentifier>{4cbe8abb-d99a-42af-956d-40e0889217e8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="Riderless-Unicycle.ino" />
@@ -21,20 +27,70 @@
     <ClInclude Include="__vm\.Riderless-Unicycle.vsarduino.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Config.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Gyro.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="PID.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Radio.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Settings.h">
+    <ClInclude Include="Payloads.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="RingBuffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Pins.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ParkingLegs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Beeper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="buffer.h">
+      <Filter>Header Files\VESC</Filter>
+    </ClInclude>
+    <ClInclude Include="crc.h">
+      <Filter>Header Files\VESC</Filter>
+    </ClInclude>
+    <ClInclude Include="datatypes.h">
+      <Filter>Header Files\VESC</Filter>
+    </ClInclude>
+    <ClInclude Include="VESC.h">
+      <Filter>Header Files\VESC</Filter>
+    </ClInclude>
+    <ClInclude Include="local_datatypes.h">
+      <Filter>Header Files\VESC</Filter>
+    </ClInclude>
+    <ClInclude Include="Balance.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Servo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Radio.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Beeper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="VESC.cpp">
+      <Filter>Source Files\VESC</Filter>
+    </ClCompile>
+    <ClCompile Include="ParkingLegs.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Balance.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="buffer.cpp">
+      <Filter>Source Files\VESC</Filter>
+    </ClCompile>
+    <ClCompile Include="crc.cpp">
+      <Filter>Source Files\VESC</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

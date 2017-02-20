@@ -1,141 +1,85 @@
 
-#ifndef __RADIO_H__
-#define __RADIO_H__
+#pragma once
 
-#include "Settings.h"
+#include "Arduino.h"
 
+#include <SPI.h>
 #include <RF24.h>
 #include <nRF24L01.h>
+#include "elapsedMillis.h"
+#include "RingBuffer.h"
 
 class Radio
 {
 public:
 
-  struct Data
-  {
-    int16_t throttle;
-    int16_t yaw;
-    int16_t pitch;
-    int16_t roll;
-  };
-  
-  struct AckPayload 
-  {
-    uint8_t armed_status;
-    float voltage;
-    int16_t gyro_pitch;
-    int16_t gyro_roll;
-    int16_t gyro_yaw;
-  };
+	struct Payload
+	{
+		enum Type
+		{
+			Normal,
+			Ack
+		};
 
-  void resetData() 
-  {
-    data.throttle = 1000;
-    data.yaw = 1500;
-    data.pitch = 1500;
-    data.roll = 1500;
-  }
+		virtual void* data() = 0;
+		virtual uint32_t size() = 0;
+		virtual void reset() = 0;
+	};
+	
+	Radio();
 
-  void resetAckPayload() 
-  {
-    ack_payload.armed_status = 0;
-    ack_payload.voltage = 0;
-    ack_payload.gyro_pitch = 0;
-    ack_payload.gyro_roll = 0;
-    ack_payload.gyro_yaw = 0;
-  }
-  
-  ~Radio()
-  {
-    if (nrf24)
-    {
-      delete nrf24;
-    }
-  }
-  
-  void setup(Settings& config)
-  {
-    time_out = config.loop_freq;
-    use_ack_payload = config.nrf24_ack_payload;
-    loops_since_last_recv = 0;
-    rx_signal = false;
+	void begin();
 
-    resetData();
-    
-    nrf24 = new RF24(config.nrf24_ce_pin, config.nrf24_csn_pin);
-    
-    nrf24->begin();
-    nrf24->setDataRate(RF24_250KBPS);
-    nrf24->setAutoAck(use_ack_payload);
+	bool hasConnection();
 
-    if (use_ack_payload)
-    {
-      nrf24->enableAckPayload();
-      resetAckPayload(); 
-    }
-    
-    nrf24->openReadingPipe(1,pipe);
-    nrf24->startListening();
-  }
+	uint16_t ackCounter(uint32_t dt_ms);
 
-  bool update()
-  {
-    loops_since_last_recv++;
-  
-    while (nrf24->available()) 
-    {
-      if (use_ack_payload)
-      {
-        nrf24->writeAckPayload(1, &ack_payload, sizeof(AckPayload));
-      }
-      
-      nrf24->read(&data, sizeof(Data));
-      
-      loops_since_last_recv = 0;
-      rx_signal = true;
-    }
-  
-    // Usually at most a single packet is received each time, in which case this function takes 220us.
-    // If no packet is received this function takes around 31us, so we'll wait 220 - 31 us to keep the time constant.
-    if (loops_since_last_recv != 0) 
-    {
-      delayMicroseconds(189); // 220 - 31
-    }
-  
-    if ( loops_since_last_recv > time_out ) 
-    {
-      // signal lost?
-      resetData();
-      rx_signal = false;
-    }
+	uint8_t getRSSI() const
+	{
+		return m_RSSI;
+	}
 
-    return rx_signal;
-  }
+	void update();
 
-  void setAckPayload(AckPayload payload)
-  {
-    ack_payload = payload;
-  }
-  
-  Data& getData()
-  {
-    return data;
-  }
+	void interruptHandler();
+
+	void setPayload(Payload* payload, Payload::Type type)
+	{
+		if (type == Payload::Normal)
+		{
+			m_payload = payload;
+		}
+		else if (type == Payload::Ack)
+		{
+			m_ackPayload = payload;
+		}
+	}
+
+	void enable(bool flag);
 
 private:
 
-  // Single radio pipe address for the 2 nodes to communicate.
-  static const uint64_t pipe = 0xE8E8F0F0E1LL;
+	void calculateRSSI();
 
-  Data data;
-  AckPayload ack_payload;
+	RF24 rf24;
 
-  bool use_ack_payload;
-  bool rx_signal;
-  uint32_t loops_since_last_recv;
-  uint16_t time_out;
- 
-  RF24* nrf24;
+	const uint8_t address[2][5] = { {0xCC,0xCE,0xCC,0xCE,0xCC} ,{ 0xCE,0xCC,0xCE,0xCC,0xCE } };
+
+	Payload* m_payload;
+	Payload* m_ackPayload;
+
+	elapsedMillis m_timer;
+
+	uint32_t m_restart_delay;
+	elapsedMillis m_restart_timer;
+
+	uint32_t m_timeout;
+	uint32_t m_update_rate;
+	const static uint32_t m_max_update_rate = 128;
+	
+	uint8_t m_RSSI;
+
+	RingBuffer<uint32_t, m_max_update_rate> m_fifo;
 };
 
-#endif
+extern Radio radio;

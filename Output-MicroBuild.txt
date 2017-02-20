@@ -1,0 +1,6 @@
+﻿Compiling 'Riderless-Unicycle' for 'Teensy 3.6'
+Program size: 70,496 bytes (used 7% of a 1,048,576 byte maximum) (1.25 secs)
+Minimum Memory Usage: 9324 bytes (4% of a 262144 byte maximum)
+ 
+Uploading 'Riderless-Unicycle' to 'Teensy 3.6' using 'COM5'
+	The upload process has finished.
