@@ -35,7 +35,7 @@ void ParkingLegs::begin()
 	stepper.setCurrentMilliamps(1060);
 
 	// Set the number of microsteps that correspond to one full step.
-	stepper.setStepMode(8);
+	stepper.setStepMode(4);
 
 	// Enable the motor outputs.
 	stepper.enableDriver();
@@ -77,4 +77,5 @@ void ParkingLegs::setRPM(float rpm)
 	}
 
 	freq = constrain((rpm / 60.0f) * (float)num_steps, -(float)max_step_rate, (float)max_step_rate);
+	freq *= 4.0f;
 }

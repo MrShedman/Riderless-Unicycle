@@ -46,9 +46,9 @@ uint32_t loop_start_time;
 
 armedState armed_state;
 
-float kp = 50.0f;
-float ki = 0.0f;// 0.1f;
-float kd = 10.0f;
+float kp = 30.0f;
+float ki = 0.01f;// 0.5f;// 0.1f;
+float kd = 0.0f;// 5.0f;
 float pid_max = 400.0f;
 
 void setup() 
@@ -156,8 +156,8 @@ void loop()
 
 	pid_setpoint = 0;
 	//We need a little dead band of 16us for better results.
-	if (payload.pitch > deadzoneMax)pid_setpoint = (payload.pitch - deadzoneMax) / setpoint;
-	else if (payload.pitch < deadzoneMin)pid_setpoint = (payload.pitch - deadzoneMin) / setpoint;
+	//if (payload.pitch > deadzoneMax)pid_setpoint = (payload.pitch - deadzoneMax) / setpoint;
+	//else if (payload.pitch < deadzoneMin)pid_setpoint = (payload.pitch - deadzoneMin) / setpoint;
 
 	//pid_setpoint *= config.rc_pitch_rate * config.rc_invert_pitch;
 
@@ -167,7 +167,7 @@ void loop()
 		imu_data_ready = false;
 	}
 
-	for (uint8_t i = 0; i < 10; ++i)
+	for (uint8_t i = 0; i < 20; ++i)
 	{
 		filter.update(gx, gy, gz, ax, ay, az, hx, hy, hz);
 	}
@@ -191,12 +191,12 @@ void loop()
 	}
 
 	float servo1_speed = map(pid.getOutput(), -pid_max, pid_max, 1000, 2000);
-	float servo2_speed = map(pid.getOutput(), -pid_max, pid_max, 2000, 1000);
+	float servo2_speed = map(pid.getOutput(), -pid_max, pid_max, 1000, 2000);
 
 	balance.setPropSpeed(motor_speed);
 	balance.setServoPositions(servo1_speed, servo2_speed);
 
-	float rpm = (float)map(payload.yaw, 1000, 2000, -100, 100);
+	float rpm = (float)map(payload.roll, 1000, 2000, -100, 100);
 	if (abs(rpm) < 5.0f)
 	{
 		rpm = 0.0f;
@@ -211,7 +211,7 @@ void loop()
 	ackPayload.current_motor = vesc.motor_values.current_motor;
 	ackPayload.tachometer_abs = vesc.motor_values.tachometer_abs;
 
-	float current = 0.0f;// (payload.pitch - 1500.0f) * 0.001f * 10;
+	float current = (payload.pitch - 1500.0f) * 0.001f * 15;
 	
 	if (abs(current) < 1.5f)
 	{
