@@ -77,5 +77,4 @@ void ParkingLegs::setRPM(float rpm)
 	}
 
 	freq = constrain((rpm / 60.0f) * (float)num_steps, -(float)max_step_rate, (float)max_step_rate);
-	freq *= 4.0f;
 }

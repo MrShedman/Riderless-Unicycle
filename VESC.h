@@ -1,10 +1,8 @@
 
 #pragma once
 
-#include "Arduino.h"
- 
+#include "Arduino.h" 
 #include "datatypes.h"
-#include "local_datatypes.h"
 
 class VESC
 {
@@ -12,40 +10,28 @@ public:
 
 	void begin()
 	{
-		Serial5.begin(256800);
+		Serial1.setRX(27);
+		Serial1.setTX(26);
+		Serial1.begin(256800);
+
+		m_read_delay = 5000; //us
+		m_update_rate = 100; //ms
 	}
 
 	void update()
 	{
-		if (millis() - t > 100)
+		if (m_update_timer > m_update_rate)
 		{
-			t = millis();
-		}
-		else
-		{
-			return;
-		}
-
-		if (getValue(motor_values))
-		{
-			//Serial.print("Loop: "); Serial.println(count++);
-			//print(motor_values);
-		}
-		else
-		{
-			Serial.println("Failed to get data!");
+			requestValues();
+			m_update_timer = 0;
 		}
 	}
-
-	void print(const struct bldcMeasure& values);
 
 	void print(const mc_values& values);
 
 	void print(uint8_t* data, int len);
 
-	bool getValue(struct bldcMeasure& values);
-
-	bool getValue(mc_values& values);
+	void requestValues();
 
 	void setCurrent(float current);
 
@@ -65,6 +51,19 @@ public:
 		return maxt;
 	}
 
+	void getValues()
+	{
+		uint8_t payload[256];
+
+		int lenPayload = receiveMessage(payload);
+		if (lenPayload > 55)
+		{
+			processReadPacket(payload, motor_values, lenPayload);
+		}
+
+		m_read_timer.end();
+	}
+
 	mc_values motor_values;
 
 private:
@@ -75,12 +74,16 @@ private:
 	int receiveMessage(uint8_t* payloadReceived);
 
 	bool unpackPayload(uint8_t* message, int lenMes, uint8_t* payload, int lenPa);
-	bool processReadPacket(uint8_t* message, bldcMeasure& values, int len);
+
 	bool processReadPacket(uint8_t* message, mc_values& values, int len);
 
 	uint32_t count;
-	struct bldcMeasure measuredValues;
 
+	uint32_t m_update_rate;
+	elapsedMillis m_update_timer;
+
+	uint32_t m_read_delay;
+	IntervalTimer m_read_timer;
 };
 
 extern VESC vesc;

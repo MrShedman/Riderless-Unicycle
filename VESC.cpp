@@ -5,6 +5,14 @@
 
 VESC vesc;
 
+namespace
+{
+	void read_interrupt()
+	{
+		vesc.getValues();
+	}
+}
+
 //#define DEBUG
 
 int VESC::receiveMessage(uint8_t* payloadReceived)
@@ -18,9 +26,9 @@ int VESC::receiveMessage(uint8_t* payloadReceived)
 	uint8_t messageReceived[256];
 	int lenPayload = 0;
 
-	while (Serial5.available())
+	while (Serial1.available())
 	{
-		messageReceived[counter++] = Serial5.read();
+		messageReceived[counter++] = Serial1.read();
 
 		if (counter == 2) //case if state of 'counter' with last read 1
 		{
@@ -133,51 +141,17 @@ int VESC::packSendPayload(uint8_t* payload, int lenPay)
 #endif // DEBUG
 
 	//Sending package
-	Serial5.write(messageSend, count);
-
+	Serial1.write(messageSend, count);
 
 	//Returns number of send bytes
 	return count;
 }
 
-bool VESC::processReadPacket(uint8_t* message, bldcMeasure& values, int len)
-{
-	COMM_PACKET_ID packetId;
-	int32_t ind = 0;
-
-	packetId = (COMM_PACKET_ID)message[0];
-	message++;//Eliminates the message id
-	len--;
-
-	switch (packetId)
-	{
-	case COMM_GET_VALUES:
-		ind = 14; //Skipped the first 14 bit.
-		values.avgMotorCurrent = buffer_get_float32(message, 100.0, &ind);
-		values.avgInputCurrent = buffer_get_float32(message, 100.0, &ind);
-		values.dutyCycleNow = buffer_get_float16(message, 1000.0, &ind);
-		values.rpm = buffer_get_int32(message, &ind);
-		values.inpVoltage = buffer_get_float16(message, 10.0, &ind);
-		values.ampHours = buffer_get_float32(message, 10000.0, &ind);
-		values.ampHoursCharged = buffer_get_float32(message, 10000.0, &ind);
-		ind += 8; //Skip 9 bit
-		values.tachometer = buffer_get_int32(message, &ind);
-		values.tachometerAbs = buffer_get_int32(message, &ind);
-		return true;
-		break;
-
-	default:
-		return false;
-		break;
-	}
-}
-
 bool VESC::processReadPacket(uint8_t* message, mc_values& values, int len)
 {
-	COMM_PACKET_ID packetId;
+	COMM_PACKET_ID packetId = (COMM_PACKET_ID)message[0];
 	int32_t ind = 0;
 
-	packetId = (COMM_PACKET_ID)message[0];
 	message++;//Eliminates the message id
 	len--;
 
@@ -213,40 +187,13 @@ bool VESC::processReadPacket(uint8_t* message, mc_values& values, int len)
 	}
 }
 
-bool VESC::getValue(bldcMeasure& values)
+void VESC::requestValues()
 {
 	uint8_t command[1] = { COMM_GET_VALUES };
-	uint8_t payload[256];
 	packSendPayload(command, 1);
-	delay(5); //needed, otherwise data is not read
-	int lenPayload = receiveMessage(payload);
-	if (lenPayload > 55) 
-	{
-		bool read = processReadPacket(payload, values, lenPayload); //returns true if sucessful
-		return read;
-	}
-	else
-	{
-		return false;
-	}
-}
 
-bool VESC::getValue(mc_values& values)
-{
-	uint8_t command[1] = { COMM_GET_VALUES };
-	uint8_t payload[256];
-	packSendPayload(command, 1);
-	delay(5);// delay(100); //needed, otherwise data is not read
-	int lenPayload = receiveMessage(payload);
-	if (lenPayload > 55) 
-	{
-		bool read = processReadPacket(payload, values, lenPayload); //returns true if sucessful
-		return read;
-	}
-	else
-	{
-		return false;
-	}
+	m_read_timer.begin(read_interrupt, m_read_delay);
+	m_read_timer.priority(255); // Lowest priority
 }
 
 void VESC::setCurrent(float current)
@@ -271,8 +218,6 @@ void VESC::setCurrentBrake(float brakeCurrent)
 
 void VESC::print(uint8_t* data, int len)
 {
-	//	Serial.print("Data to display: "); Serial.println(sizeof(data));
-
 	for (int i = 0; i <= len; i++)
 	{
 		Serial.print(data[i]);
@@ -293,17 +238,4 @@ void VESC::print(const mc_values& values)
 	Serial.print("tachometer: ");		Serial.println(values.tachometer);
 	Serial.print("tachometerAbs: ");	Serial.println(values.tachometer_abs);
 	//Serial.print("MOSFET Temps: ");	Serial.println(values.tachometer_abs);
-}
-
-void VESC::print(const bldcMeasure& values)
-{
-	Serial.print("avgMotorCurrent: ");	Serial.println(values.avgMotorCurrent);
-	Serial.print("avgInputCurrent: ");	Serial.println(values.avgInputCurrent);
-	Serial.print("dutyCycleNow: ");		Serial.println(values.dutyCycleNow);
-	Serial.print("rpm: ");				Serial.println(values.rpm);
-	Serial.print("inputVoltage: ");		Serial.println(values.inpVoltage);
-	Serial.print("ampHours: ");			Serial.println(values.ampHours);
-	Serial.print("ampHoursCharges: ");	Serial.println(values.ampHoursCharged);
-	Serial.print("tachometer: ");		Serial.println(values.tachometer);
-	Serial.print("tachometerAbs: ");	Serial.println(values.tachometerAbs);
 }

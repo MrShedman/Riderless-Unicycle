@@ -20,13 +20,13 @@ public:
 		m_servo2.begin(SERVO2_PIN, 1000, 2000);
 
 		m_motor.begin(PROP_ESC_PIN, 1000, 2000);
-		m_motor.write(1000);
+		setPropSpeed(1000);
 	}
 
 	void setPropSpeed(uint32_t speed)
 	{
 		m_prop_speed = speed;
-		m_motor.write(speed);
+		m_motor.write(m_prop_speed);
 	}
 
 	void setServoPositions(uint32_t pos1, uint32_t pos2)

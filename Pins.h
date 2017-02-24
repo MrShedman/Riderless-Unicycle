@@ -1,6 +1,6 @@
 #pragma once
 
-const uint8_t BEEP_PIN = 2;
+const uint8_t BEEP_PIN = 3;
 
 const uint8_t IMU_CS_PIN = 10;
 const uint8_t IMU_IRQ_PIN = 9;

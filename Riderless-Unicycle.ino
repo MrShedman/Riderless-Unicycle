@@ -10,20 +10,26 @@ QuadAckPayload ackPayload;
 
 #include "ParkingLegs.h"
 #include "VESC.h"
-#include "MPU9250.h"
+//#include "IMU.h"
 #include "MadgwickAHRS.h"
+#include "MahonyAHRS.h"
 #include "Balance.h"
 #include "PID.h"
+#include "MPU9250.h"
 
 PID pid;
 
-MPU9250 IMU(IMU_CS_PIN);
+MPU9250 imu(IMU_CS_PIN);
 
-Madgwick filter;
+//Madgwick filter;
+Mahony filter;
 float m_filter_hz = 200;
 
 float ax, ay, az, gx, gy, gz, hx, hy, hz, t;
-int beginStatus, setFiltStatus;
+
+float accelBias[3];
+float gyroBias[3];
+
 volatile int i = 0;
 
 volatile bool imu_data_ready = false;
@@ -46,9 +52,9 @@ uint32_t loop_start_time;
 
 armedState armed_state;
 
-float kp = 30.0f;
-float ki = 0.01f;// 0.5f;// 0.1f;
-float kd = 0.0f;// 5.0f;
+float kp = 8.0f;
+float ki = 0.3f;// 0.5f;// 0.1f;
+float kd = 4.0f;// 5.0f;
 float pid_max = 400.0f;
 
 void setup() 
@@ -56,7 +62,7 @@ void setup()
 	// serial to display data
 	Serial.begin(115200);
 
-	vesc.begin();
+	//vesc.begin();
 
 	pid.setup(kp, ki, kd, pid_max, pid_max);
 
@@ -72,25 +78,49 @@ void setup()
 
 	filter.begin(m_filter_hz);
 
-	beginStatus = IMU.begin(ACCEL_RANGE_4G, GYRO_RANGE_250DPS);
-
-	if (beginStatus < 0) 
-	{
-		delay(1000);
-		Serial.println("IMU initialization unsuccessful");
-		while (1) {};
-	}
-
-	float SRD = (1000.0f / m_filter_hz) - 1.0f;
-	setFiltStatus = IMU.setFilt(DLPF_BANDWIDTH_92HZ, SRD);
+	imu.begin(ACCEL_RANGE_4G, GYRO_RANGE_250DPS);
 	
+	imu.setFilt(DLPF_BANDWIDTH_184HZ, 4);
+	
+	imu.enableInt(true);
 	pinMode(IMU_IRQ_PIN, INPUT);
 	attachInterrupt(IMU_IRQ_PIN, imu_interrupt, RISING);
 
+	int32_t calibration_count = 1000;
+	float scale = 1.0f / (float)calibration_count;
+
+	while (calibration_count > 0)
+	{
+		if (imu_data_ready)
+		{
+			imu.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &hx, &hy, &hz);
+			gx *= 57.2958f;
+			gy *= 57.2958f;
+			gz *= 57.2958f;
+
+			gyroBias[0] += gx;
+			gyroBias[1] += gy;
+			gyroBias[2] += gz;
+		
+			imu_data_ready = false;
+			calibration_count--;
+		}
+	}
+
+	gyroBias[0] *= scale;
+	gyroBias[1] *= scale;
+	gyroBias[2] *= scale;
+
+	Serial.print(gyroBias[0]);
+	Serial.print("\t");
+	Serial.print(gyroBias[1]);
+	Serial.print("\t");
+	Serial.println(gyroBias[2]);
+
 	radio.begin();
 
-	pinMode(BEEP_PIN, OUTPUT);
-	beeper(BEEPER_2_LONG);
+	//pinMode(BEEP_PIN, OUTPUT);
+	//beeper(BEEPER_GYRO_CALIBRATED);
 }
 
 float calibrated_values[3];
@@ -163,13 +193,36 @@ void loop()
 
 	if (imu_data_ready)
 	{
-		IMU.getMotion10(&ax, &ay, &az, &gx, &gy, &gz, &hx, &hy, &hz, &t);
+		imu.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &hx, &hy, &hz);
+		gx *= 57.2958f;
+		gy *= 57.2958f;
+		gz *= 57.2958f;
+		//hx *= 10.0f;
+		//hy *= 10.0f;
+		//hz *= 10.0f;
+
+		//ax -= accelBias[0];
+		//ay -= accelBias[1];
+		//az -= accelBias[2];
+
+		gx -= gyroBias[0];
+		gy -= gyroBias[1];
+		gz -= gyroBias[2];
+
 		imu_data_ready = false;
 	}
 
 	for (uint8_t i = 0; i < 20; ++i)
 	{
-		filter.update(gx, gy, gz, ax, ay, az, hx, hy, hz);
+		//const IMU::sensor_data& data = imu.get_data();
+
+		filter.update(gx, gy, gz, ax, ay, az, 0.0f, 0.0f, 0.0f);
+		//filter.update(data.gx, data.gy, data.gz, data.ax, data.ay, data.az, data.mx, data.my, data.mz);
+	}
+
+	if (abs(filter.getRoll()) > 25)
+	{
+		//armed_state = DISARMED;
 	}
 
 	ackPayload.armed_status = armed_state;
@@ -177,11 +230,11 @@ void loop()
 	ackPayload.pitch = filter.getPitch();
 	ackPayload.yaw = filter.getYaw();
 
-	pid.update(filter.getPitch(), pid_setpoint);
+	pid.update(-filter.getRoll(), pid_setpoint);
 
-	Serial.print(filter.getPitch());
-	Serial.print("\t");
-	Serial.println(pid.getOutput());
+	//Serial.print(filter.getRoll());
+	//Serial.print("\t");
+	//Serial.println(pid.getOutput());
 
 	float motor_speed = 1000;
 
@@ -197,6 +250,7 @@ void loop()
 	balance.setServoPositions(servo1_speed, servo2_speed);
 
 	float rpm = (float)map(payload.roll, 1000, 2000, -100, 100);
+	
 	if (abs(rpm) < 5.0f)
 	{
 		rpm = 0.0f;
@@ -211,7 +265,7 @@ void loop()
 	ackPayload.current_motor = vesc.motor_values.current_motor;
 	ackPayload.tachometer_abs = vesc.motor_values.tachometer_abs;
 
-	float current = (payload.pitch - 1500.0f) * 0.001f * 15;
+	float current = 0.0f;// (payload.pitch - 1500.0f) * 0.001f * 15;
 	
 	if (abs(current) < 1.5f)
 	{
@@ -219,7 +273,7 @@ void loop()
 	}
 	vesc.setCurrent(current);
 
-	//printData();
+	printData();
 
 	while (micros() - loop_start_time < 1e6 / m_filter_hz);
 
@@ -228,13 +282,13 @@ void loop()
 
 void printData()
 {
-
+	///*
 	Serial.print(filter.getRoll());
 	Serial.print("\t");
 	Serial.print(filter.getPitch());
 	Serial.print("\t");
 	Serial.println(filter.getYaw());
-
+	//*/
 /*
 	// print the data
 	Serial.print(ax, 6);

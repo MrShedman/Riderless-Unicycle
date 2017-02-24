@@ -60,13 +60,13 @@
     <ClInclude Include="VESC.h">
       <Filter>Header Files\VESC</Filter>
     </ClInclude>
-    <ClInclude Include="local_datatypes.h">
-      <Filter>Header Files\VESC</Filter>
-    </ClInclude>
     <ClInclude Include="Balance.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Servo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IMU.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -91,6 +91,9 @@
     </ClCompile>
     <ClCompile Include="crc.cpp">
       <Filter>Source Files\VESC</Filter>
+    </ClCompile>
+    <ClCompile Include="IMU.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
