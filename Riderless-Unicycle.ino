@@ -11,11 +11,18 @@ QuadAckPayload ackPayload;
 #include "ParkingLegs.h"
 #include "VESC.h"
 //#include "IMU.h"
-#include "MadgwickAHRS.h"
+//#include "MadgwickAHRS.h"
 #include "MahonyAHRS.h"
 #include "Balance.h"
 #include "PID.h"
 #include "MPU9250.h"
+#include "Filter.h"
+
+biquadFilter_t gx_bqfilter;
+biquadFilter_t gy_bqfilter;
+biquadFilter_t gz_bqfilter;
+
+pt1Filter_s ptfilters[6];
 
 PID pid;
 
@@ -25,6 +32,7 @@ MPU9250 imu(IMU_CS_PIN);
 Mahony filter;
 float m_filter_hz = 200;
 
+float nax, nay, naz, ngx, ngy, ngz, nhx, nhy, nhz, nt;
 float ax, ay, az, gx, gy, gz, hx, hy, hz, t;
 
 float accelBias[3];
@@ -52,19 +60,19 @@ uint32_t loop_start_time;
 
 armedState armed_state;
 
-float kp = 8.0f;
-float ki = 0.3f;// 0.5f;// 0.1f;
-float kd = 4.0f;// 5.0f;
+float kp = 12.0f;
+float ki = 0.25f;
+float kd = 3.0f;
 float pid_max = 400.0f;
 
-void setup() 
+void setup()
 {
 	// serial to display data
 	Serial.begin(115200);
 
 	//vesc.begin();
 
-	pid.setup(kp, ki, kd, pid_max, pid_max);
+	pid.setup(kp, ki, kd, pid_max, pid_max, 100, 2000);
 
 	payload.reset();
 	ackPayload.reset();
@@ -79,9 +87,9 @@ void setup()
 	filter.begin(m_filter_hz);
 
 	imu.begin(ACCEL_RANGE_4G, GYRO_RANGE_250DPS);
-	
+
 	imu.setFilt(DLPF_BANDWIDTH_184HZ, 4);
-	
+
 	imu.enableInt(true);
 	pinMode(IMU_IRQ_PIN, INPUT);
 	attachInterrupt(IMU_IRQ_PIN, imu_interrupt, RISING);
@@ -101,7 +109,7 @@ void setup()
 			gyroBias[0] += gx;
 			gyroBias[1] += gy;
 			gyroBias[2] += gz;
-		
+
 			imu_data_ready = false;
 			calibration_count--;
 		}
@@ -116,6 +124,23 @@ void setup()
 	Serial.print(gyroBias[1]);
 	Serial.print("\t");
 	Serial.println(gyroBias[2]);
+
+	biquadFilterInitNotch(&gx_bqfilter, m_filter_hz, 50, 10);
+	biquadFilterInitNotch(&gy_bqfilter, m_filter_hz, 50, 10);
+	biquadFilterInitNotch(&gz_bqfilter, m_filter_hz, 50, 10);
+
+	float gyro_cut_off = 10.0f;
+	float accel_cut_off = 5.0f;
+
+	for (uint8_t i = 0; i < 3; ++i)
+	{
+		pt1FilterInit(&ptfilters[i], gyro_cut_off, 1.0f / m_filter_hz);
+	}
+
+	for (uint8_t i = 3; i < 6; ++i)
+	{
+		pt1FilterInit(&ptfilters[i], accel_cut_off, 1.0f / m_filter_hz);
+	}
 
 	radio.begin();
 
@@ -201,13 +226,58 @@ void loop()
 		//hy *= 10.0f;
 		//hz *= 10.0f;
 
-		//ax -= accelBias[0];
-		//ay -= accelBias[1];
-		//az -= accelBias[2];
-
 		gx -= gyroBias[0];
 		gy -= gyroBias[1];
 		gz -= gyroBias[2];
+
+		ngx = pt1FilterApply(&ptfilters[0], gx);
+		ngy = pt1FilterApply(&ptfilters[1], gy);
+		ngz = pt1FilterApply(&ptfilters[2], gz);
+		nax = pt1FilterApply(&ptfilters[3], ax);
+		nay = pt1FilterApply(&ptfilters[4], ay);
+		naz = pt1FilterApply(&ptfilters[5], az);
+
+		//Serial.print(ax, 6);
+		//Serial.print(",");
+
+		//ngx = biquadFilterApply(&gx_bqfilter, gx);
+
+		//nax = pt1FilterApply(&gx_ptfilter, ax);
+
+		//Serial.println(nax, 6);
+		/*
+		float st = 1.0f;
+
+		ngx = (1.0f - st) * ngx + st * gx;
+		ngy = (1.0f - st) * ngy + st * gy;
+		ngz = (1.0f - st) * ngz + st * gz;
+		nax = (1.0f - st) * nax + st * ax;
+		nay = (1.0f - st) * nay + st * ay;
+		naz = (1.0f - st) * naz + st * az;
+		*/
+		//Serial.print(payload.throttle);
+	//	Serial.print(",");
+		
+		/*
+		Serial.print(nax, 6);
+		Serial.print(",");
+		Serial.print(nay, 6);
+		Serial.print(",");
+		Serial.print(naz, 6);
+		Serial.print(",");
+
+		Serial.print(ngx, 6);
+		Serial.print(",");
+		Serial.print(ngy, 6);
+		Serial.print(",");
+		Serial.println(ngz, 6);
+		*/
+
+	//	Serial.print("\t");
+
+		//ax -= accelBias[0];
+		//ay -= accelBias[1];
+		//az -= accelBias[2];
 
 		imu_data_ready = false;
 	}
@@ -216,7 +286,7 @@ void loop()
 	{
 		//const IMU::sensor_data& data = imu.get_data();
 
-		filter.update(gx, gy, gz, ax, ay, az, 0.0f, 0.0f, 0.0f);
+		filter.update(ngx, ngy, ngz, nax, nay, naz, 0.0f, 0.0f, 0.0f);
 		//filter.update(data.gx, data.gy, data.gz, data.ax, data.ay, data.az, data.mx, data.my, data.mz);
 	}
 
@@ -230,7 +300,7 @@ void loop()
 	ackPayload.pitch = filter.getPitch();
 	ackPayload.yaw = filter.getYaw();
 
-	pid.update(-filter.getRoll(), pid_setpoint);
+	pid.update(-filter.getRoll(), pid_setpoint, payload.throttle, 2000);
 
 	//Serial.print(filter.getRoll());
 	//Serial.print("\t");
@@ -249,7 +319,7 @@ void loop()
 	balance.setPropSpeed(motor_speed);
 	balance.setServoPositions(servo1_speed, servo2_speed);
 
-	float rpm = (float)map(payload.roll, 1000, 2000, -100, 100);
+	float rpm = (float)map(payload.roll, 1000, 2000, -300, 300);
 	
 	if (abs(rpm) < 5.0f)
 	{
@@ -285,9 +355,9 @@ void printData()
 	///*
 	Serial.print(filter.getRoll());
 	Serial.print("\t");
-	Serial.print(filter.getPitch());
-	Serial.print("\t");
-	Serial.println(filter.getYaw());
+	Serial.println(filter.getPitch());
+	//Serial.print("\t");
+	//Serial.println(filter.getYaw());
 	//*/
 /*
 	// print the data
