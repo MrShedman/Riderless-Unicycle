@@ -2,41 +2,47 @@
 
 #include "PID.h"
 
-void resetPidProfile(pidProfile_t* profile)
+void resetPidProfile(pidProfile_t profile[PID_ITEM_COUNT])
 {
 	// ROLL
 
-	profile->kp[PIDROLL] = 100.0f;//12.0f;
-	profile->ki[PIDROLL] = 0.02f;//0.25f;
-	profile->kd[PIDROLL] = 70.0f;//3.0f;
+	profile[PIDROLL].kp = 80.0f;//12.0f;
+	profile[PIDROLL].ki = 0.02f;//0.25f;
+	profile[PIDROLL].kd = 100.0f;//3.0f;
 
-	profile->max_I[PIDROLL] = 400.0f;
-	profile->max_Out[PIDROLL] = 400.0f;
+	profile[PIDROLL].max_I = 400.0f;
+	profile[PIDROLL].max_Out = 400.0f;
 
-	profile->tpa[PIDROLL] = 100.0f;
-	profile->tpa_breakpoint[PIDROLL] = 100.0f;
+	profile[PIDROLL].tpa = 80;
+	profile[PIDROLL].tpa_breakpoint = 1500;
+
+	profile[PIDROLL].dterm_lpf_hz = 5;
 
 	// PITCH
 
-	profile->kp[PIDPITCH] = 3.0f;
-	profile->ki[PIDPITCH] = 0.0f;
-	profile->kd[PIDPITCH] = 0.0f;
+	profile[PIDPITCH].kp = 8.0f;
+	profile[PIDPITCH].ki = 0.0f;
+	profile[PIDPITCH].kd = 1.0f;
 
-	profile->max_I[PIDPITCH] = 400.0f;
-	profile->max_Out[PIDPITCH] = 400.0f;
+	profile[PIDPITCH].max_I = 400.0f;
+	profile[PIDPITCH].max_Out = 400.0f;
 
-	profile->tpa[PIDPITCH] = 100.0f;
-	profile->tpa_breakpoint[PIDPITCH] = 100.0f;
+	profile[PIDPITCH].tpa = 100;
+	profile[PIDPITCH].tpa_breakpoint = 2000;
+
+	profile[PIDPITCH].dterm_lpf_hz = 5;
 
 	// YAW
 
-	profile->kp[PIDYAW] = 4.0f;
-	profile->ki[PIDYAW] = 0.0f;
-	profile->kd[PIDYAW] = 0.0f;
+	profile[PIDYAW].kp = 4.0f;
+	profile[PIDYAW].ki = 0.0f;
+	profile[PIDYAW].kd = 0.0f;
 
-	profile->max_I[PIDYAW] = 400.0f;
-	profile->max_Out[PIDYAW] = 400.0f;
+	profile[PIDYAW].max_I = 400.0f;
+	profile[PIDYAW].max_Out = 400.0f;
 
-	profile->tpa[PIDYAW] = 100.0f;
-	profile->tpa_breakpoint[PIDYAW] = 100.0f;
+	profile[PIDYAW].tpa = 100;
+	profile[PIDYAW].tpa_breakpoint = 2000;
+
+	profile[PIDYAW].dterm_lpf_hz = 5;
 }

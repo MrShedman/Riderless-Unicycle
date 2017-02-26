@@ -1,11 +1,13 @@
 #pragma once
 
+#include "Arduino.h"
+#include "Utility.h"
 
 class Servo
 {
 public:
 
-	void begin(int pin, int min, int max)
+	void begin(uint8_t pin, float min, float max)
 	{
 		if (!digitalPinHasPWM(pin))
 		{
@@ -31,7 +33,8 @@ public:
 
 	void write(float usec)
 	{
-		usec = constrain(usec, m_min, m_max);
+		usec = constrain(usec, 1000, 2000);
+		usec = mapf(usec, 1000, 2000, m_min, m_max);
 
 		uint32_t duty = (uint32_t)(usec / (1e6 / m_frequency) * 4096.0f);
 

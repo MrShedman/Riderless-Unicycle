@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Arduino.h"
+#include "Filter.h"
 
 typedef enum
 {
@@ -14,30 +15,37 @@ pidIndex_e;
 
 typedef struct pidProfile_s
 {
-	float kp[PID_ITEM_COUNT];
-	float ki[PID_ITEM_COUNT];
-	float kd[PID_ITEM_COUNT];
+	float kp;
+	float ki;
+	float kd;
 
-	float max_I[PID_ITEM_COUNT];
-	float max_Out[PID_ITEM_COUNT];
+	float max_I;
+	float max_Out;
 
-	uint8_t tpa[PID_ITEM_COUNT];
-	uint8_t tpa_breakpoint[PID_ITEM_COUNT];
+	uint16_t tpa;
+	uint16_t tpa_breakpoint;
+
+	float dterm_lpf_hz;
 }pidProfile_t;
 
 class PID
 {
 public:
 
-	void setup(float kp, float ki, float kd, float max_i, float max_output, uint8_t tpa, uint8_t tpa_breakpoint)
+	void setup(const pidProfile_t* profile)//float kp, float ki, float kd, float max_i, float max_output, uint8_t tpa, uint8_t tpa_breakpoint)
 	{
-		p_gain = kp;
-		i_gain = ki;
-		d_gain = kd;
-		this->max_i = max_i;
-		this->max_output = max_output;
-		this->tpa = constrain(tpa, 0, 100);
-		this->tpa_breakpoint = constrain(tpa_breakpoint, 0, 100);
+		p_gain = profile->kp;
+		i_gain = profile->ki;
+		d_gain = profile->kd;
+		this->max_i = profile->max_I;
+		this->max_output = profile->max_Out;
+		this->tpa = constrain(profile->tpa, 0, 100);
+		this->tpa_breakpoint = constrain(profile->tpa_breakpoint, 1000, 2000);
+
+		if (profile->dterm_lpf_hz > 0.0f)
+		{
+			pt1FilterInit(&dterm_filter, profile->dterm_lpf_hz, 1.0f / 1000.f);
+		}
 
 		reset();
 	}
@@ -57,8 +65,8 @@ public:
 
 private:
 
-	uint8_t tpa;
-	uint8_t tpa_breakpoint;
+	uint16_t tpa;
+	uint16_t tpa_breakpoint;
 
 	float p_gain;                //Gain setting for the pitch P-controller. //4.0
 	float i_gain;                //Gain setting for the pitch I-controller. //0.02
@@ -70,8 +78,10 @@ private:
 	float i_mem;
 	float output;
 	float last_d_error;
+
+	pt1Filter_t dterm_filter;
 };
 
-extern pidProfile_t pid_profile;
+extern pidProfile_t pid_profile[PID_ITEM_COUNT];
 
 extern PID axisPID[PID_ITEM_COUNT];

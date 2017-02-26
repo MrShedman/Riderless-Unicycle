@@ -5,6 +5,7 @@
 #include "Pins.h"
 #include "Servo.h"
 #include "Filter.h"
+#include "PID.h"
 
 class Balance
 {
@@ -22,6 +23,8 @@ public:
 
 private:
 	
+	PID rpmPID;
+
 	float rpm_cut_off_hz = 5.0f;
 	pt1Filter_t rpm_filter;
 	uint32_t m_sensed_rpm;
@@ -30,9 +33,11 @@ private:
 	Servo m_servo2;
 	Servo m_motor;
 
-	uint32_t m_servo1_pos;
-	uint32_t m_servo2_pos;
-	uint32_t m_prop_speed;
+	const float m_s1_max = 1170.0f;
+	const float m_s1_min = 1550.0f;
+
+	const float m_s2_max = 1890.0f;
+	const float m_s2_min = 1500.0f;
 };
 
 extern Balance balance;

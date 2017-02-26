@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Arduino.h"
+#include "Filter.h"
 
 //Magnetometer Registers
 #define AK8963_ADDRESS   0x0C
@@ -173,7 +174,7 @@ public:
 
 	IMU(uint8_t csPin);
 
-	void begin(mpu9250_accel_range accelRange, mpu9250_gyro_range gyroRange);
+	void begin();
 
 	void calibrate();
 
@@ -182,6 +183,9 @@ public:
 		read_raw();
 		apply_calibration();
 		apply_inversion_and_scale();
+		apply_filters();
+		update_fusion();
+		calculate_angles();
 	}
 
 	union sensor_data
@@ -219,11 +223,30 @@ private:
 	void read_raw();
 	void apply_calibration();
 	void apply_inversion_and_scale();
+	void apply_filters();
+	void update_fusion();
+	void calculate_angles();
+
+	const float twoKp = 10.0f;		// 2 * proportional gain (Kp)
+	const float twoKi = 0.2f;		// 2 * integral gain (Ki)
+	
+	float q0, q1, q2, q3;	// quaternion of sensor frame relative to auxiliary frame
+	float integralFBx, integralFBy, integralFBz;  // integral error terms scaled by Ki
+	float invSampleFreq;
+
+	pt1Filter_t ptfilters[6];
+	const float gyro_cut_off = 15.0f;//8.0f;
+	const float accel_cut_off = 5.0f;//5.0f;
 
 	sensor_data data;
 	
-	float gyroBias[3] = { 0, 0, 0 };
+	float gyroBias[3] = { 0.15f, -0.21f, 1.27f };
 	float accelBias[3] = { 0, 0, 0 };
+
+	const float sample_rate = 1000.0f;
+	const mpu9250_accel_range accelRange = ACCEL_RANGE_4G;
+	const mpu9250_gyro_range gyroRange = GYRO_RANGE_250DPS;
+	const mpu9250_dlpf_bandwidth dlpf = DLPF_BANDWIDTH_250HZ;
 
 	uint8_t _csPin;
 	bool _useSPIHS;
@@ -239,9 +262,6 @@ private:
 	const uint32_t SPI_HS_CLOCK = 20000000; // 20 MHz
 
 	// constants
-	const float G = 9.807f;
-	const float _d2r = 3.14159265359f / 180.0f;
-
 	const uint8_t INT_DISABLE = 0x00;
 	const uint8_t INT_PULSE_50US = 0x00;
 	const uint8_t INT_RAW_RDY_EN = 0x01;
@@ -253,7 +273,6 @@ private:
 	const uint8_t PWR_MGMNT_2 = 0x6C;
 	const uint8_t SEN_ENABLE = 0x00;
 
-
 	const uint8_t I2C_MST_EN = 0x20;
 	const uint8_t I2C_MST_CLK = 0x0D;
 
@@ -264,27 +283,13 @@ private:
 
 	// AK8963 registers
 	const uint8_t AK8963_I2C_ADDR = 0x0C;
-
 	const uint8_t AK8963_HXL = 0x03;
-
-
 	const uint8_t AK8963_PWR_DOWN = 0x00;
 	const uint8_t AK8963_CNT_MEAS1 = 0x12;
 	const uint8_t AK8963_CNT_MEAS2 = 0x16;
 	const uint8_t AK8963_FUSE_ROM = 0x0F;
-
 	const uint8_t AK8963_RESET = 0x01;
-
 	const uint8_t AK8963_ASA = 0x10;
-
-	// transformation matrix
-	/* transform the accel and gyro axes to match the magnetometer axes */
-	const int16_t tX[3] = { 0,  1,  0 };
-	const int16_t tY[3] = { 1,  0,  0 };
-	const int16_t tZ[3] = { 0,  0, -1 };
-	//const int16_t tX[3] = { 1,  0,  0 };
-	//const int16_t tY[3] = { 0,  1,  0 };
-	//const int16_t tZ[3] = { 0,  0,  1 };
 
 	bool writeRegister(uint8_t subAddress, uint8_t data);
 	void readRegisters(uint8_t subAddress, uint8_t count, uint8_t* dest);

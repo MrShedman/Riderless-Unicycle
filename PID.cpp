@@ -1,7 +1,7 @@
 #include "PID.h"
 #include "Utility.h"
 
-pidProfile_t pid_profile;
+pidProfile_t pid_profile[PID_ITEM_COUNT];
 
 PID axisPID[PID_ITEM_COUNT];
 
@@ -24,8 +24,11 @@ void PID::update(float input, float setpoint, float throttle, float max_throttle
 	i_mem += ki * error_temp;
 	i_mem = constrain(i_mem, -max_i, max_i);
 
-	output = kp * error_temp + i_mem + kd * (error_temp - last_d_error);
-	output = constrain(output, -max_output, max_output);
-
+	float dterm = kd * (error_temp - last_d_error);
 	last_d_error = error_temp;
+
+	dterm = pt1FilterApply(&dterm_filter, dterm);
+
+	output = kp * error_temp + i_mem + dterm;
+	output = constrain(output, -max_output, max_output);
 }

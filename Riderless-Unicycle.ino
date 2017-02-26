@@ -11,17 +11,12 @@ QuadAckPayload ackPayload;
 
 #include "ParkingLegs.h"
 #include "VESC.h"
-//#include "IMU.h"
-#include "MadgwickAHRS.h"
-#include "MahonyAHRS.h"
+#include "IMU.h"
 #include "Balance.h"
 #include "PID.h"
-#include "MPU9250.h"
 #include "Filter.h"
 #include "SDCard.h"
 #include "Utility.h"
-
-pt1Filter_t ptfilters[6];
 
 pt1Filter_t pitch_filter;
 
@@ -36,13 +31,11 @@ typedef enum
 } 
 rcIndex_e;
 
-void initPIDS(const pidProfile_t* profile)
+void initPIDS(const pidProfile_t profile[PID_ITEM_COUNT])
 {
 	for (uint8_t i = 0; i < PID_ITEM_COUNT; ++i)
 	{
-		axisPID[i].setup(profile->kp[i], profile->ki[i], profile->kd[i],
-			profile->max_I[i], profile->max_Out[i],
-			profile->tpa[i], profile->tpa_breakpoint[i]);
+		axisPID[i].setup(&profile[i]);
 	}
 }
 
@@ -56,46 +49,24 @@ const float setpoint = (500 - deadzoneBuffer) / maxRollRate;
 
 float rcCommand[4];
 
-MPU9250 imu(IMU_CS_PIN);
+IMU imu(IMU_CS_PIN);
 
-//Madgwick filter;
-Mahony filter;
 float m_filter_hz = 200;
-
-float nax, nay, naz, ngx, ngy, ngz, nhx, nhy, nhz, nt;
-float ax, ay, az, gx, gy, gz, hx, hy, hz, t;
-
-float accelBias[3];
-double gyroBias[3];
 
 volatile int i = 0;
 
 volatile bool imu_data_ready = false;
+volatile uint32_t int_count = 0;
 
 void imu_interrupt()
 {
-	imu.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &hx, &hy, &hz);
-		
-	gx *= 57.2958f;
-	gy *= 57.2958f;
-	gz *= 57.2958f;
+	int_count++;
+	imu.update();
+	auto& d = imu.get_data();
 
-	gx -= gyroBias[0];
-	gy -= gyroBias[1];
-	gz -= gyroBias[2];
-
-	ngx = pt1FilterApply(&ptfilters[0], gx);
-	ngy = pt1FilterApply(&ptfilters[1], gy);
-	ngz = pt1FilterApply(&ptfilters[2], gz);
-	nax = pt1FilterApply(&ptfilters[3], ax);
-	nay = pt1FilterApply(&ptfilters[4], ay);
-	naz = pt1FilterApply(&ptfilters[5], az);
-
-	filter.update(ngx, ngy, ngz, nax, nay, naz, 0.0f, 0.0f, 0.0f);
-
-	axisPID[PIDROLL].update(filter.getRoll(), pid_setpoint[PIDROLL], rcCommand[THROTTLE], 2000);
-	axisPID[PIDPITCH].update(filter.getPitch(), pid_setpoint[PIDPITCH], rcCommand[THROTTLE], 2000);
-	axisPID[PIDYAW].update(ngz, pid_setpoint[PIDYAW], rcCommand[THROTTLE], 2000);
+	axisPID[PIDROLL].update(d.roll, pid_setpoint[PIDROLL], rcCommand[THROTTLE], 2000);
+	axisPID[PIDPITCH].update(d.pitch, pid_setpoint[PIDPITCH], rcCommand[THROTTLE], 2000);
+	axisPID[PIDYAW].update(d.gz, pid_setpoint[PIDYAW], rcCommand[THROTTLE], 2000);
 }
 
 uint32_t loop_counter;
@@ -103,7 +74,7 @@ uint32_t loop_start_time;
 
 armedState armed_state = DISARMED;
 
-void calibrateIMU()
+/*void calibrateIMU()
 {
 	int32_t calibration_count = 2000;
 	double scale = 1.0f / (double)calibration_count;
@@ -112,7 +83,7 @@ void calibrateIMU()
 	{
 		if (imu_data_ready)
 		{
-			imu.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &hx, &hy, &hz);
+			//imu.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &hx, &hy, &hz);
 			gx *= 57.2958f;
 			gy *= 57.2958f;
 			gz *= 57.2958f;
@@ -136,57 +107,35 @@ void calibrateIMU()
 	Serial.print(gyroBias[1], 6);
 	Serial.print("\t");
 	Serial.println(gyroBias[2], 6);
-}
+}*/
 
 void setup()
 {
-	// serial to display data
 	Serial.begin(115200);
 	
 	vesc.begin();
 
-	resetPidProfile(&pid_profile);
-	initPIDS(&pid_profile);
+	resetPidProfile(pid_profile);
+	initPIDS(pid_profile);
 
 	payload.reset();
 	ackPayload.reset();
 
 	radio.setPayload(&payload, Radio::Payload::Normal);
 	radio.setPayload(&ackPayload, Radio::Payload::Ack);
-///*
+
 	balance.begin();
 
 	parkingLegs.begin();
 
-	filter.begin(1000.0f);// m_filter_hz);
+	imu.begin();
 
-	imu.begin(ACCEL_RANGE_4G, GYRO_RANGE_250DPS);
-
-	imu.setFilt(DLPF_BANDWIDTH_184HZ, 0);
-
-	imu.enableInt(true);
 	pinMode(IMU_IRQ_PIN, INPUT);
 	attachInterrupt(IMU_IRQ_PIN, imu_interrupt, RISING);
 
 	//calibrateIMU();
 
-	gyroBias[0] = 0.15f;
-	gyroBias[1] = -0.21f;
-	gyroBias[2] = 1.27f;
-
-	float gyro_cut_off = 15.0f;//8.0f;
-	float accel_cut_off = 15.0f;//5.0f;
 	float rc_cut_off = 10.0f;
-
-	for (uint8_t i = 0; i < 3; ++i)
-	{
-		pt1FilterInit(&ptfilters[i], gyro_cut_off, 1.0f / 1000.0f);
-	}
-
-	for (uint8_t i = 3; i < 6; ++i)
-	{
-		pt1FilterInit(&ptfilters[i], accel_cut_off, 1.0f / 1000.0f);
-	}
 
 	for (uint8_t i = 0; i < 4; ++i)
 	{
@@ -318,12 +267,14 @@ void loop()
 	float servo1_speed = axisPID[PIDROLL].getOutput() - axisPID[PIDYAW].getOutput();
 	float servo2_speed = axisPID[PIDROLL].getOutput() + axisPID[PIDYAW].getOutput();
 
+	//Serial.println(servo1_speed);
+
 	//Serial.print(servo1_speed);
 	//Serial.print("\t");
 	//Serial.println(servo2_speed);
 
-	servo1_speed = mapf(servo1_speed, -pid_profile.max_Out[PIDROLL], pid_profile.max_Out[PIDROLL], 1000, 2000);
-	servo2_speed = mapf(servo2_speed, -pid_profile.max_Out[PIDROLL], pid_profile.max_Out[PIDROLL], 1000, 2000);
+	servo1_speed = mapf(servo1_speed, -pid_profile[PIDROLL].max_Out, pid_profile[PIDROLL].max_Out, 1000, 2000);
+	servo2_speed = mapf(servo2_speed, -pid_profile[PIDROLL].max_Out, pid_profile[PIDROLL].max_Out, 1000, 2000);
 
 	balance.setPropSpeed(motor_speed);
 	balance.setServoPositions(servo1_speed, servo2_speed);
@@ -342,9 +293,9 @@ void loop()
 	vesc.update();
 
 	ackPayload.armed_status = armed_state;
-	ackPayload.roll = filter.getRoll();
-	ackPayload.pitch = filter.getPitch();
-	ackPayload.yaw = filter.getYaw();
+	ackPayload.roll = imu.get_data().roll;
+	ackPayload.pitch = imu.get_data().pitch;
+	ackPayload.yaw = imu.get_data().yaw;
 	ackPayload.bat_voltage = vesc.motor_values.v_in;
 	ackPayload.temp_mos_avg = vesc.getMaxMOSFETTemp();
 	ackPayload.current_motor = vesc.motor_values.current_motor;
@@ -366,19 +317,21 @@ void loop()
 	}
 
 	const float max_current = 10.0f;
+	const float max_duty = 0.3f;
 
-	current = mapf(current, -pid_profile.max_Out[PIDPITCH], pid_profile.max_Out[PIDPITCH], -max_current, max_current);
+	//current = mapf(current, -pid_profile[PIDPITCH].max_Out, pid_profile[PIDPITCH].max_Out, -max_current, max_current);
+	current = mapf(current, -pid_profile[PIDPITCH].max_Out, pid_profile[PIDPITCH].max_Out, -max_duty, max_duty);
 
 	//Serial.println(current);
-	//Serial.print("\t");
+//	Serial.print("\t");
 
-	if (abs(current) < 1.5f)
+	if (abs(current) < 0.05f)
 	{
 		current = 0.0f;
 	}
 
-	vesc.setDuty(0.0f);// current*0.03f);
-
+	//vesc.setCurrent(current * -1.0f);// current*0.03f);
+	//vesc.setDuty(current * -1.0f);
 	//printData();
 	
 	while (micros() - loop_start_time < 1e6 / m_filter_hz);
@@ -389,9 +342,9 @@ void loop()
 void printData()
 {
 	///*
-	Serial.print(filter.getRoll());
+	Serial.print(imu.get_data().roll);
 	Serial.print("\t");
-	Serial.println(filter.getPitch());
+	Serial.println(imu.get_data().pitch);
 	//Serial.println(axisPID[PIDROLL].getOutput());// filter.getPitch());
 	//Serial.print("\t");
 	//Serial.println(filter.getYaw());

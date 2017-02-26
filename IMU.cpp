@@ -2,13 +2,39 @@
 #include "IMU.h"
 #include "SPI.h"
 
+#define DEFAULT_SAMPLE_FREQ	512.0f	// sample frequency in Hz
+#define twoKpDef	(2.0f * 5.0f)	// 2 * proportional gain
+#define twoKiDef	(2.0f * 0.1f)	// 2 * integral gain
+
+
+//============================================================================================
+// Functions
+
+//-------------------------------------------------------------------------------------------
+// AHRS algorithm update
+
+//Mahony::Mahony()
+//{
+//	twoKp = twoKpDef;	// 2 * proportional gain (Kp)
+//	twoKi = twoKiDef;	// 2 * integral gain (Ki)
+
+
 IMU::IMU(uint8_t csPin)
 {
 	_csPin = csPin; // SPI CS Pin
 	_useSPIHS = false; // defaul to low speed SPI transactions until data reads start to occur
+
+	q0 = 1.0f;
+	q1 = 0.0f;
+	q2 = 0.0f;
+	q3 = 0.0f;
+	integralFBx = 0.0f;
+	integralFBy = 0.0f;
+	integralFBz = 0.0f;
+	invSampleFreq = 1.0f / sample_rate;
 }
 
-void IMU::begin(mpu9250_accel_range accelRange, mpu9250_gyro_range gyroRange)
+void IMU::begin()
 {
 	pinMode(_csPin, OUTPUT);
 
@@ -21,60 +47,75 @@ void IMU::begin(mpu9250_accel_range accelRange, mpu9250_gyro_range gyroRange)
 	SPI.begin();
 
 	//calibrate();
+	
+	writeRegister(PWR_MGMT_1, CLOCK_SEL_PLL);			// select clock source to gyro
+	writeRegister(USER_CTRL, I2C_MST_EN);				// enable I2C master mode
+	writeRegister(I2C_MST_CTRL, I2C_MST_CLK);			// set the I2C bus speed to 400 kHz
+	writeAK8963Register(AK8963_CNTL1, AK8963_PWR_DOWN);	// set AK8963 to Power Down
+	writeRegister(PWR_MGMT_1, PWR_RESET);				// reset the MPU9250
+	
+	delay(1);
 
-	writeRegister(PWR_MGMT_1, 0x00);
-	delay(100);
-
-	// select clock source to gyro
-	writeRegister(PWR_MGMT_1, 0x01);
-
-	// dlpf_cfg
-	writeRegister(CONFIG, 0x03);
-
-	writeRegister(SMPLRT_DIV, 0x04);
-
-	// setup the accel and gyro ranges
-	writeRegister(GYRO_CONFIG, gyroRange << 3);
-	writeRegister(ACCEL_CONFIG, accelRange << 3);
+	writeAK8963Register(AK8963_CNTL2, AK8963_RESET);	// reset the AK8963
+	writeRegister(PWR_MGMT_1, CLOCK_SEL_PLL);			// select clock source to gyro
+	writeRegister(PWR_MGMT_2, SEN_ENABLE);				// enable accelerometer and gyro
+	writeRegister(GYRO_CONFIG, gyroRange << 3);			// setup the gyro ranges
+	writeRegister(ACCEL_CONFIG, accelRange << 3);		// setup the accel ranges
 
 	_gyroScale = powf(2.0f, (float)gyroRange + 1.0f) * 125.0f / 32768.0f;
 	_accelScale = powf(2.0f, (float)accelRange + 1.0f) / 32768.0f;
 
-	writeRegister(USER_CTRL, 0x20);
+	writeRegister(USER_CTRL, I2C_MST_EN);				// enable I2C master mode
+	writeRegister(I2C_MST_CTRL, I2C_MST_CLK);			// set the I2C bus speed to 400 kHz
+	writeAK8963Register(AK8963_CNTL1, AK8963_PWR_DOWN);	// set AK8963 to Power Down
 
-	// set the I2C bus speed to 400 kHz
-	writeRegister(I2C_MST_CTRL, 0x0D);
+	delay(100);
+	
+	writeAK8963Register(AK8963_CNTL1, AK8963_FUSE_ROM);	// set AK8963 to FUSE ROM access
 
-	// set AK8963 to Power Down
-	writeAK8963Register(AK8963_CNTL1, 0x00);
-
-	delay(10); // long wait between AK8963 mode changes
-
-	// set AK8963 to FUSE ROM access
-	writeAK8963Register(AK8963_CNTL1, 0x0F);
-
-	delay(10); // long wait between AK8963 mode changes
-
+	delay(100);
+	
 	uint8_t buff[3];
-
+				
 	// read the AK8963 ASA registers and compute magnetometer scale factors
-	readAK8963Registers(AK8963_ASAX, sizeof(buff), &buff[0]);
-	_magScaleX = (((float)buff[0] - 128.0f) / 256.0f + 1.0f) * 10.f * 4912.0f / 32760.0f;
-	_magScaleY = (((float)buff[1] - 128.0f) / 256.0f + 1.0f) * 10.f * 4912.0f / 32760.0f;
-	_magScaleZ = (((float)buff[2] - 128.0f) / 256.0f + 1.0f) * 10.f * 4912.0f / 32760.0f;
-																						   
-	// set AK8963 to Power Down
-	writeAK8963Register(AK8963_CNTL1, 0x00);
+	readAK8963Registers(AK8963_ASA, sizeof(buff), &buff[0]);
+	_magScaleX = ((((float)buff[0]) - 128.0f) / (256.0f) + 1.0f) * 4912.0f / 32760.0f; // micro Tesla
+	_magScaleY = ((((float)buff[1]) - 128.0f) / (256.0f) + 1.0f) * 4912.0f / 32760.0f; // micro Tesla
+	_magScaleZ = ((((float)buff[2]) - 128.0f) / (256.0f) + 1.0f) * 4912.0f / 32760.0f; // micro Tesla 
+	
+	writeAK8963Register(AK8963_CNTL1, AK8963_PWR_DOWN);	// set AK8963 to Power Down
 
-	delay(10); // long wait between AK8963 mode changes  
+	delay(100);
 
-	// set AK8963 to 16 bit resolution, 100 Hz update rate
-	writeAK8963Register(AK8963_CNTL1, 0x16);
+	writeAK8963Register(AK8963_CNTL1, AK8963_CNT_MEAS2);// set AK8963 to 16 bit resolution, 100 Hz update rate
 
-	delay(10); // long wait between AK8963 mode changes
+	delay(100);
 
-	writeRegister(INT_PIN_CFG, 0x10); //INT_ANYRD_2CLEAR
-	writeRegister(INT_ENABLE, 0x01);
+	writeRegister(PWR_MGMT_1, CLOCK_SEL_PLL);			// select clock source to gyro
+
+	// instruct the MPU9250 to get 7 bytes of data from the AK8963 at the sample rate
+	uint8_t data[7];
+	readAK8963Registers(AK8963_HXL, sizeof(data), &data[0]);
+
+	writeRegister(CONFIG, dlpf);		// dlpf_cfg
+	writeRegister(ACCEL_CONFIG2, dlpf);	// dlpf_cfg
+
+	uint8_t srd = floorf((1000.0f / sample_rate) - 1.0f);
+
+	writeRegister(SMPLRT_DIV, srd);	// sample rate divider
+
+	for (uint8_t i = 0; i < 3; ++i)
+	{
+		pt1FilterInit(&ptfilters[i], accel_cut_off, 1.0f / sample_rate);
+	}
+
+	for (uint8_t i = 3; i < 6; ++i)
+	{
+		pt1FilterInit(&ptfilters[i], gyro_cut_off, 1.0f / sample_rate);
+	}
+
+	writeRegister(INT_PIN_CFG, 0x10);	// INT_ANYRD_2CLEAR
+	writeRegister(INT_ENABLE, 0x01);	// INT enable
 }
 
 void IMU::calibrate()
@@ -242,17 +283,17 @@ void IMU::read_raw()
 
 	readRegisters(ACCEL_XOUT_H, sizeof(buff), &buff[0]); // grab the data from the MPU9250
 
-	data.ax = float(((int16_t)buff[0] << 8) | buff[1]);
-	data.ay = float(((int16_t)buff[2] << 8) | buff[3]);
-	data.az = float(((int16_t)buff[4] << 8) | buff[5]);
+	data.axis[0] = (int16_t)(((int16_t)buff[0]) << 8) | buff[1];
+	data.axis[1] = (int16_t)(((int16_t)buff[2]) << 8) | buff[3];
+	data.axis[2] = (int16_t)(((int16_t)buff[4]) << 8) | buff[5];
 
-	data.gx = float(((int16_t)buff[8] << 8) | buff[9]);
-	data.gy = float(((int16_t)buff[10] << 8) | buff[11]);
-	data.gz = float(((int16_t)buff[12] << 8) | buff[13]);
+	data.axis[3] = (int16_t)(((int16_t)buff[8]) << 8) | buff[9];
+	data.axis[4] = (int16_t)(((int16_t)buff[10]) << 8) | buff[11];
+	data.axis[5] = (int16_t)(((int16_t)buff[12]) << 8) | buff[13];
 
-	data.mx = float(((int16_t)buff[15] << 8) | buff[14]);
-	data.my = float(((int16_t)buff[17] << 8) | buff[16]);
-	data.mz = float(((int16_t)buff[19] << 8) | buff[18]);
+	data.axis[6] = (int16_t)(((int16_t)buff[15]) << 8) | buff[14];
+	data.axis[7] = (int16_t)(((int16_t)buff[17]) << 8) | buff[16];
+	data.axis[8] = (int16_t)(((int16_t)buff[19]) << 8) | buff[18];
 }
 
 void IMU::apply_calibration()
@@ -283,10 +324,7 @@ void IMU::apply_inversion_and_scale()
 	Serial.println(data.axis[5]);
 	*/
 
-	//data.axis[3] -= 60.0f;
-	//data.axis[4] -= 65500.0f;
-	//data.axis[5] -= 80.0f;
-
+///*
 	data.axis[0] *= _accelScale;
 	data.axis[1] *= _accelScale;
 	data.axis[2] *= _accelScale;
@@ -299,6 +337,11 @@ void IMU::apply_inversion_and_scale()
 	data.axis[7] *= _magScaleY;
 	data.axis[8] *= _magScaleZ;
 
+	data.axis[3] -= gyroBias[0];
+	data.axis[4] -= gyroBias[1];
+	data.axis[5] -= gyroBias[2];
+
+	//*/
 	// custom adjustments
 	// calibration appears broken at least for gyro
 	//data.axis[3] += 10.4f;
@@ -318,7 +361,7 @@ void IMU::apply_inversion_and_scale()
 	Serial.print("\t");
 	Serial.println(gyroBias[2]);
 	*/
-	///*
+	/*
 	Serial.print(data.axis[0]);
 	Serial.print("\t");
 	Serial.print(data.axis[1]);
@@ -330,7 +373,105 @@ void IMU::apply_inversion_and_scale()
 	Serial.print(data.axis[4]);
 	Serial.print("\t");
 	Serial.println(data.axis[5]);
-	//*/
+	*/
+}
+
+void IMU::apply_filters()
+{
+	for (uint8_t i = 0; i < 6; ++i)
+	{
+		data.axis[i] = pt1FilterApply(&ptfilters[i], data.axis[i]);
+	}
+}
+
+void IMU::update_fusion()
+{
+	float recipNorm;
+	float halfvx, halfvy, halfvz;
+	float halfex, halfey, halfez;
+	float qa, qb, qc;
+
+	// Convert gyroscope degrees/sec to radians/sec
+	data.gx *= 0.0174533f;
+	data.gy *= 0.0174533f;
+	data.gz *= 0.0174533f;
+	
+	// Compute feedback only if accelerometer measurement valid
+	// (avoids NaN in accelerometer normalisation)
+	if (!((data.ax == 0.0f) && (data.ay == 0.0f) && (data.az == 0.0f))) {
+
+		// Normalise accelerometer measurement
+		recipNorm = 1.0f / sqrtf(data.ax * data.ax + data.ay * data.ay + data.az * data.az);
+		data.ax *= recipNorm;
+		data.ay *= recipNorm;
+		data.az *= recipNorm;
+
+		// Estimated direction of gravity
+		halfvx = q1 * q3 - q0 * q2;
+		halfvy = q0 * q1 + q2 * q3;
+		halfvz = q0 * q0 - 0.5f + q3 * q3;
+
+		// Error is sum of cross product between estimated
+		// and measured direction of gravity
+		halfex = (data.ay * halfvz - data.az * halfvy);
+		halfey = (data.az * halfvx - data.ax * halfvz);
+		halfez = (data.ax * halfvy - data.ay * halfvx);
+
+		// Compute and apply integral feedback if enabled
+		if (twoKi > 0.0f)
+		{
+			// integral error scaled by Ki
+			integralFBx += twoKi * halfex * invSampleFreq;
+			integralFBy += twoKi * halfey * invSampleFreq;
+			integralFBz += twoKi * halfez * invSampleFreq;
+			data.gx += integralFBx;	// apply integral feedback
+			data.gy += integralFBy;
+			data.gz += integralFBz;
+		}
+		else 
+		{
+			integralFBx = 0.0f;	// prevent integral windup
+			integralFBy = 0.0f;
+			integralFBz = 0.0f;
+		}
+
+		// Apply proportional feedback
+		data.gx += twoKp * halfex;
+		data.gy += twoKp * halfey;
+		data.gz += twoKp * halfez;
+	}
+
+	// Integrate rate of change of quaternion
+	data.gx *= (0.5f * invSampleFreq);		// pre-multiply common factors
+	data.gy *= (0.5f * invSampleFreq);
+	data.gz *= (0.5f * invSampleFreq);
+	qa = q0;
+	qb = q1;
+	qc = q2;
+	q0 += (-qb * data.gx - qc * data.gy - q3 * data.gz);
+	q1 += (qa * data.gx + qc * data.gz - q3 * data.gy);
+	q2 += (qa * data.gy - qb * data.gz + q3 * data.gx);
+	q3 += (qa * data.gz + qb * data.gy - qc * data.gx);
+
+	// Normalise quaternion
+	recipNorm = 1.0f / sqrtf(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+	q0 *= recipNorm;
+	q1 *= recipNorm;
+	q2 *= recipNorm;
+	q3 *= recipNorm;
+}
+
+void IMU::calculate_angles()
+{	
+	// compute angles
+	data.roll = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2);
+	data.pitch = asinf(-2.0f * (q1*q3 - q0*q2));
+	data.yaw = atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3);
+
+	// rad to deg
+	data.roll *= 57.29578f;
+	data.pitch *= 57.29578f;
+	data.yaw *= 57.29578f;
 }
 
 bool IMU::writeRegister(uint8_t subAddress, uint8_t data)
@@ -353,7 +494,12 @@ bool IMU::writeRegister(uint8_t subAddress, uint8_t data)
 	if (buff[0] == data) {
 		return true;
 	}
-	else {
+	else
+	{
+		Serial.print("Error in writing register:");
+		Serial.print(subAddress);
+		Serial.print("\t");
+		Serial.println(subAddress);
 		return false;
 	}
 }
