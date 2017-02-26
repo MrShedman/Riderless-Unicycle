@@ -32,15 +32,16 @@ void ParkingLegs::begin()
 
 	// Set the current limit.  You should change the number here to
 	// an appropriate value for your particular system.
-	stepper.setCurrentMilliamps(1600);
+	stepper.setCurrentMilliamps(1000);
 
 	// Set the number of microsteps that correspond to one full step.
 	stepper.setStepMode(1);
 
 	// Enable the motor outputs.
-	stepper.enableDriver();
+	//stepper.enableDriver();
 
 	timer.begin(stepper_driver, 1e6 / drive_frequency);
+	timer.priority(255);
 }
 
 void ParkingLegs::stepperDriver()

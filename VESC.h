@@ -33,6 +33,10 @@ public:
 
 	void requestValues();
 
+	void setRPM(float rpm);
+
+	void setDuty(float duty);
+
 	void setCurrent(float current);
 
 	void setCurrentBrake(float brakeCurrent);

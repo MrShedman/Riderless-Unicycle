@@ -71,6 +71,7 @@ struct QuadAckPayload : public Radio::Payload
 	}
 
 	uint8_t armed_status;
+	uint8_t padding;
 	uint16_t packets_per_second;
 	float bat_voltage;
 	float roll;

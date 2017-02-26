@@ -44,6 +44,7 @@ void Radio::interruptHandler()
 	}
 	if (rx)
 	{ 
+		//Serial.println("Recieve:OK");
 		rx_available = true;
 	}
 }
@@ -86,6 +87,8 @@ void Radio::calculateRSSI()
 
 void Radio::update()
 {
+	enable(false);
+
 	if (rx_available)
 	{
 		rf24.read(m_payload->data(), m_payload->size());
@@ -111,6 +114,8 @@ void Radio::update()
 			m_restart_timer = 0;
 		}
 	}
+
+	enable(true);
 }
 
 void Radio::enable(bool flag)
@@ -128,10 +133,11 @@ void Radio::enable(bool flag)
 void Radio::begin()
 {
 	rf24.begin();
-	//radio.setChannel(125);
+	rf24.setChannel(125);
 	rf24.setPALevel(RF24_PA_MAX);
 	rf24.enableAckPayload();
-	//radio.enableDynamicPayloads();
+	rf24.enableDynamicPayloads();
+	rf24.setCRCLength(RF24_CRC_16);
 	rf24.setDataRate(RF24_1MBPS);
 	rf24.setRetries(4, 1);
 	rf24.openWritingPipe(address[1]);

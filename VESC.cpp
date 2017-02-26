@@ -196,6 +196,26 @@ void VESC::requestValues()
 	m_read_timer.priority(255); // Lowest priority
 }
 
+void VESC::setRPM(float rpm)
+{
+	int32_t index = 0;
+	uint8_t payload[5];
+
+	payload[index++] = COMM_SET_RPM;
+	buffer_append_float32(payload, rpm, 1e0, &index);
+	packSendPayload(payload, 5);
+}
+
+void VESC::setDuty(float duty)
+{
+	int32_t index = 0;
+	uint8_t payload[5];
+
+	payload[index++] = COMM_SET_DUTY;
+	buffer_append_float32(payload, duty, 100000.0, &index);
+	packSendPayload(payload, 5);
+}
+
 void VESC::setCurrent(float current)
 {
 	int32_t index = 0;
