@@ -17,6 +17,7 @@ void resetPidProfile(pidProfile_t profile[PID_ITEM_COUNT])
 	profile[PIDROLL].tpa_breakpoint = 1500;
 
 	profile[PIDROLL].dterm_lpf_hz = 5;
+	profile[PIDROLL].lpf_dT = 1.0f / 1000.0f;
 
 	// PITCH
 
@@ -31,6 +32,7 @@ void resetPidProfile(pidProfile_t profile[PID_ITEM_COUNT])
 	profile[PIDPITCH].tpa_breakpoint = 2000;
 
 	profile[PIDPITCH].dterm_lpf_hz = 5;
+	profile[PIDPITCH].lpf_dT = 1.0f / 1000.0f;
 
 	// YAW
 
@@ -45,4 +47,5 @@ void resetPidProfile(pidProfile_t profile[PID_ITEM_COUNT])
 	profile[PIDYAW].tpa_breakpoint = 2000;
 
 	profile[PIDYAW].dterm_lpf_hz = 5;
+	profile[PIDYAW].lpf_dT = 1.0f / 1000.0f;
 }

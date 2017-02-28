@@ -1,5 +1,10 @@
 #pragma once
 
+void sd_begin();
+
+
+/*
+
 #include <SD_t3.h>
 #include <SD.h>
 
@@ -15,22 +20,40 @@ SdFile root;
 // MKRZero SD: SDCARD_SS_PIN
 const int chipSelect = BUILTIN_SDCARD;
 
+uint32_t t = 0;
+const uint32_t dt = 5000;
+
 void begin() 
 {
-	Serial.print("\nInitializing SD card...");
+	//Serial.print("\nInitializing SD card...");
+
+	if (millis() - t > dt)
+	{
+		t = millis();
+	}
+	else
+	{
+		return;
+	}
+
+	uint32_t t1 = micros();
 
 	// we'll use the initialization code from the utility libraries
 	// since we're just testing if the card is working!
-	if (!card.init(SPI_HALF_SPEED, chipSelect)) {
-		Serial.println("initialization failed. Things to check:");
-		Serial.println("* is a card inserted?");
-		Serial.println("* is your wiring correct?");
-		Serial.println("* did you change the chipSelect pin to match your shield or module?");
-		return;
+	if (!card.init(SPI_HALF_SPEED, chipSelect))
+	{
+		Serial.println("BAD");		
 	}
-	else {
-		Serial.println("Wiring is correct and a card is present.");
+	else 
+	{
+		Serial.println("GOOD");
 	}
+
+	Serial.print("Card init time: ");
+	Serial.print(micros() - t1);
+	Serial.println("us");
+
+	return;
 
 	// print the type of card
 	Serial.print("\nCard type: ");
@@ -79,4 +102,4 @@ void begin()
 
 	// list all files in the card with date and size
 	root.ls(LS_R | LS_DATE | LS_SIZE);
-}
+}*/

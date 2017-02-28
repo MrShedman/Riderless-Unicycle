@@ -26,13 +26,14 @@ typedef struct pidProfile_s
 	uint16_t tpa_breakpoint;
 
 	float dterm_lpf_hz;
+	float lpf_dT;
 }pidProfile_t;
 
 class PID
 {
 public:
 
-	void setup(const pidProfile_t* profile)//float kp, float ki, float kd, float max_i, float max_output, uint8_t tpa, uint8_t tpa_breakpoint)
+	void setup(const pidProfile_t* profile)
 	{
 		p_gain = profile->kp;
 		i_gain = profile->ki;
@@ -42,9 +43,9 @@ public:
 		this->tpa = constrain(profile->tpa, 0, 100);
 		this->tpa_breakpoint = constrain(profile->tpa_breakpoint, 1000, 2000);
 
-		if (profile->dterm_lpf_hz > 0.0f)
+		if (profile->dterm_lpf_hz > 0.0f && profile->lpf_dT > 0.0f)
 		{
-			pt1FilterInit(&dterm_filter, profile->dterm_lpf_hz, 1.0f / 1000.f);
+			pt1FilterInit(&dterm_filter, profile->dterm_lpf_hz, profile->lpf_dT);
 		}
 
 		reset();

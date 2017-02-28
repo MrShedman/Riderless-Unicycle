@@ -3,7 +3,7 @@
 
 Balance balance;
 
-extern float m_filter_hz;
+extern float main_loop_hz;
 
 namespace
 {
@@ -15,20 +15,19 @@ namespace
 	{
 		balance.interrupt_handler();
 	}
-
-	pidProfile_t profile;
 }
 
 void Balance::begin()
 {
-	profile.kp = 4.0f;
-	profile.ki = 0.0f;
-	profile.kd = 2.0f;
-	profile.max_I = 200.0f;
-	profile.max_Out = 200.0f;
+	profile.kp = 5.0f;
+	profile.ki = 0.2f;
+	profile.kd = 1.0f;
+	profile.max_I = 3000.0f;
+	profile.max_Out = 6000.0f;
 	profile.tpa = 100;
 	profile.tpa_breakpoint = 2000;
 	profile.dterm_lpf_hz = 5.0f;
+	profile.lpf_dT = 1.0f / main_loop_hz;
 
 	rpmPID.setup(&profile);
 
@@ -42,30 +41,47 @@ void Balance::begin()
 	m_motor.begin(PROP_ESC_PIN, 1000, 2000);
 	setPropSpeed(1000);
 
-	pt1FilterInit(&rpm_filter, rpm_cut_off_hz, 1.0f / m_filter_hz);
+	pt1FilterInit(&rpm_filter, rpm_cut_off_hz, 1.0f / main_loop_hz);
 
 	pinMode(PROP_RPM_PIN, INPUT);
 	attachInterrupt(PROP_RPM_PIN, rpm_interrupt, CHANGE);
 }
 
+
 void Balance::setPropSpeed(float speed)
 {
-	m_motor.write(speed);
+	// found empirically
+	// relates throttle (1-2ms pulse) with rpm
+	const float m = 9.3192f;
+	const float c = -9585.5f;
 
-	Serial.print(m_sensed_rpm);
-	Serial.print("\t");
-	//Serial.println(speed);
-	//Serial.print("\t");
+	float setpoint = m * speed + c;
 
-	float input = mapf(m_sensed_rpm, 1000.0f, 3000.0f, 1140.0f, 1500.0f);
+	if (setpoint < 0.0f)
+	{
+		setpoint = 0.0f;
+	}
 
-	rpmPID.update(input, speed, speed, 2000);
+	rpmPID.update(setpoint, updateRPM(), speed, 2000);
 
-	float s = rpmPID.getOutput();
+	float s = (rpmPID.getOutput() - c) / m;
+
+	//Serial.println(s);
+
 	s = constrain(s, 1000, 1400);
-	Serial.println(s);
 
-	//m_motor.write(s);
+	//Serial.println(s);
+
+	// dont use PID as rpm measurement is noisy at low rpms
+	if (speed > 1150)
+	{
+		m_motor.write(s);
+	}
+	else
+	{
+		m_motor.write(speed);
+		rpmPID.reset();
+	}
 }
 
 void Balance::setServoPositions(float pos1, float pos2)
@@ -74,7 +90,7 @@ void Balance::setServoPositions(float pos1, float pos2)
 	m_servo2.write(pos2);
 }
 
-void Balance::printRPM()
+float Balance::updateRPM()
 {
 	const uint32_t _duration = duration;
 	const uint32_t _pulsecount = pulsecount;
@@ -87,13 +103,14 @@ void Balance::printRPM()
 	{
 		freq = 1e6 / float(_duration) * _pulsecount;
 	}
-	
-	//Serial.print(freq);
-	//Serial.print("\t");
 
 	m_sensed_rpm = pt1FilterApply(&rpm_filter, freq);
 	
-	//Serial.println(m_sensed_rpm);
+	//Serial.print(freq);
+	//Serial.print("\t");
+	Serial.println(m_sensed_rpm);
+
+	return m_sensed_rpm;
 }
 
 void Balance::interrupt_handler()

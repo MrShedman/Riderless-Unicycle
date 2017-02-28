@@ -17,17 +17,18 @@ public:
 
 	void setServoPositions(float pos1, float pos2);
 
-	void printRPM();
+	float updateRPM();
 
 	void interrupt_handler();
 
 private:
 	
+	pidProfile_t profile;
 	PID rpmPID;
 
 	float rpm_cut_off_hz = 5.0f;
 	pt1Filter_t rpm_filter;
-	uint32_t m_sensed_rpm;
+	float m_sensed_rpm;
 
 	Servo m_servo1;
 	Servo m_servo2;

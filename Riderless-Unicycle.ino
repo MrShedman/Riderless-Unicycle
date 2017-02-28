@@ -1,5 +1,4 @@
 
-
 #include "Pins.h"
 #include "Config.h"
 #include "Beeper.h"
@@ -51,7 +50,7 @@ float rcCommand[4];
 
 IMU imu(IMU_CS_PIN);
 
-float m_filter_hz = 200;
+float main_loop_hz = 200;
 
 volatile int i = 0;
 
@@ -139,10 +138,10 @@ void setup()
 
 	for (uint8_t i = 0; i < 4; ++i)
 	{
-		pt1FilterInit(&rc_filters[i], rc_cut_off, 1.0f / m_filter_hz);
+		pt1FilterInit(&rc_filters[i], rc_cut_off, 1.0f / main_loop_hz);
 	}
 
-	pt1FilterInit(&pitch_filter, 1.0f, 1.0f / m_filter_hz);
+	pt1FilterInit(&pitch_filter, 1.0f, 1.0f / main_loop_hz);
 
 	radio.begin();
 
@@ -155,8 +154,15 @@ bool radio_bug = false;
 QuadPayload bug_payload;
 uint32_t bug_cc = 0;
 
+const uint32_t settle_time = 1000;
+const uint32_t sample_rate = 200;
+const uint32_t increment = 10;
+const uint32_t limit = 1500;
+
 void loop() 
 {
+	//sd_begin();
+
 	radio.update();
 
 	if (payload.throttle < 1000 || payload.throttle > 2000 ||
@@ -212,6 +218,64 @@ void loop()
 	rcCommand[PITCH] = pt1FilterApply(&rc_filters[2], payload.pitch);
 	rcCommand[YAW] = pt1FilterApply(&rc_filters[3], payload.yaw);
 
+	/*
+	//const uint32_t settle_time = 1000;
+	//const uint32_t sample_rate = 100;
+	//const uint32_t increment = 10;
+	//const uint32_t limit = 1500;
+	static bool test = false;
+	static float avg = 0.0f;
+	static uint32_t tc = 0;
+	static float set_rpm = 1000.0f;
+	static float mes_rpm = 0.0f;
+
+	if (rcCommand[ROLL] > 1800)
+	{
+		test = true;
+	}
+
+	if (rcCommand[ROLL] < 1200)
+	{
+		test = false;
+		avg = 0.0f;
+		tc = 0;
+		set_rpm = 1000.0f;
+		mes_rpm = 0.0f;
+	}
+	
+	if (test)
+	{
+		balance.setPropSpeed(set_rpm);// rcCommand[THROTTLE]);
+		
+		balance.setServoPositions(1500.0f, 1500.0f);
+
+		avg += balance.printRPM();
+		tc++;
+
+		if (tc > settle_time)
+		{
+			mes_rpm = avg / (float)tc;
+			tc = 0;
+			avg = 0.0f;
+			set_rpm += increment;
+
+			Serial.print(rcCommand[THROTTLE]);
+			Serial.print("\t");
+			Serial.print(mes_rpm);
+			Serial.print("\t");
+			Serial.println(set_rpm);
+		}
+
+	}
+
+	while (micros() - loop_start_time < 1e6 / main_loop_hz);
+
+	loop_start_time = micros();
+
+	return;
+
+	*/
+
 	//Serial.println(rcCommand[THROTTLE]);
 
 	if (!radio.hasConnection())
@@ -232,6 +296,8 @@ void loop()
 
 		//Reset the pid controllers for a bumpless start.
 		axisPID[PIDROLL].reset();
+		axisPID[PIDPITCH].reset();
+		axisPID[PIDYAW].reset();
 	}
 
 	//Stopping the motors: throttle low and yaw right.
@@ -245,7 +311,9 @@ void loop()
 	if (rcCommand[ROLL] > deadzoneMax)pid_setpoint[PIDROLL] = (rcCommand[ROLL] - deadzoneMax) / setpoint;
 	else if (rcCommand[ROLL] < deadzoneMin)pid_setpoint[PIDROLL] = (rcCommand[ROLL] - deadzoneMin) / setpoint;
 
-	pid_setpoint[PIDROLL] += 0.5f;
+	// offset due to CoM being slightly off-centre
+	// found from CAD model
+	pid_setpoint[PIDROLL] += 0.62f;
 
 	pid_setpoint[PIDPITCH] = 0;
 	//We need a little dead band of 16us for better results.
@@ -267,12 +335,6 @@ void loop()
 	float servo1_speed = axisPID[PIDROLL].getOutput() - axisPID[PIDYAW].getOutput();
 	float servo2_speed = axisPID[PIDROLL].getOutput() + axisPID[PIDYAW].getOutput();
 
-	//Serial.println(servo1_speed);
-
-	//Serial.print(servo1_speed);
-	//Serial.print("\t");
-	//Serial.println(servo2_speed);
-
 	servo1_speed = mapf(servo1_speed, -pid_profile[PIDROLL].max_Out, pid_profile[PIDROLL].max_Out, 1000, 2000);
 	servo2_speed = mapf(servo2_speed, -pid_profile[PIDROLL].max_Out, pid_profile[PIDROLL].max_Out, 1000, 2000);
 
@@ -288,8 +350,6 @@ void loop()
 
 	parkingLegs.setRPM(rpm);
 	
-	balance.printRPM();
-
 	vesc.update();
 
 	ackPayload.armed_status = armed_state;
@@ -334,7 +394,7 @@ void loop()
 	//vesc.setDuty(current * -1.0f);
 	//printData();
 	
-	while (micros() - loop_start_time < 1e6 / m_filter_hz);
+	while (micros() - loop_start_time < 1e6 / main_loop_hz);
 
 	loop_start_time = micros();
 }
