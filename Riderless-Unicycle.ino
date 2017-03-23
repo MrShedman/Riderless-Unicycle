@@ -43,12 +43,12 @@ float pid_setpoint[PID_ITEM_COUNT];
 const float deadzoneBuffer = 8.0;
 const float deadzoneMin = 1500 - deadzoneBuffer;
 const float deadzoneMax = 1500 + deadzoneBuffer;
-const float maxRollRate = 60.0f;
+const float maxRollRate = 5.0f;
 const float setpoint = (500 - deadzoneBuffer) / maxRollRate;
 
 float rcCommand[4];
 
-IMU imu(IMU_CS_PIN);
+IMU imu;
 
 float main_loop_hz = 200;
 
@@ -218,64 +218,6 @@ void loop()
 	rcCommand[PITCH] = pt1FilterApply(&rc_filters[2], payload.pitch);
 	rcCommand[YAW] = pt1FilterApply(&rc_filters[3], payload.yaw);
 
-	/*
-	//const uint32_t settle_time = 1000;
-	//const uint32_t sample_rate = 100;
-	//const uint32_t increment = 10;
-	//const uint32_t limit = 1500;
-	static bool test = false;
-	static float avg = 0.0f;
-	static uint32_t tc = 0;
-	static float set_rpm = 1000.0f;
-	static float mes_rpm = 0.0f;
-
-	if (rcCommand[ROLL] > 1800)
-	{
-		test = true;
-	}
-
-	if (rcCommand[ROLL] < 1200)
-	{
-		test = false;
-		avg = 0.0f;
-		tc = 0;
-		set_rpm = 1000.0f;
-		mes_rpm = 0.0f;
-	}
-	
-	if (test)
-	{
-		balance.setPropSpeed(set_rpm);// rcCommand[THROTTLE]);
-		
-		balance.setServoPositions(1500.0f, 1500.0f);
-
-		avg += balance.printRPM();
-		tc++;
-
-		if (tc > settle_time)
-		{
-			mes_rpm = avg / (float)tc;
-			tc = 0;
-			avg = 0.0f;
-			set_rpm += increment;
-
-			Serial.print(rcCommand[THROTTLE]);
-			Serial.print("\t");
-			Serial.print(mes_rpm);
-			Serial.print("\t");
-			Serial.println(set_rpm);
-		}
-
-	}
-
-	while (micros() - loop_start_time < 1e6 / main_loop_hz);
-
-	loop_start_time = micros();
-
-	return;
-
-	*/
-
 	//Serial.println(rcCommand[THROTTLE]);
 
 	if (!radio.hasConnection())
@@ -313,7 +255,7 @@ void loop()
 
 	// offset due to CoM being slightly off-centre
 	// found from CAD model
-	pid_setpoint[PIDROLL] += 0.62f;
+	pid_setpoint[PIDROLL] += 0.4f;//0.62f;
 
 	pid_setpoint[PIDPITCH] = 0;
 	//We need a little dead band of 16us for better results.
@@ -337,6 +279,9 @@ void loop()
 
 	servo1_speed = mapf(servo1_speed, -pid_profile[PIDROLL].max_Out, pid_profile[PIDROLL].max_Out, 1000, 2000);
 	servo2_speed = mapf(servo2_speed, -pid_profile[PIDROLL].max_Out, pid_profile[PIDROLL].max_Out, 1000, 2000);
+
+	//servo1_speed = rcCommand[PITCH];
+	//servo2_speed = rcCommand[PITCH];
 
 	balance.setPropSpeed(motor_speed);
 	balance.setServoPositions(servo1_speed, servo2_speed);
@@ -409,6 +354,7 @@ void printData()
 	//Serial.print("\t");
 	//Serial.println(filter.getYaw());
 	//*/
+	//Serial.println(imu.get_data().gx, 6);
 /*
 	// print the data
 	Serial.print(ax, 6);

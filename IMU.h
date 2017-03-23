@@ -172,20 +172,30 @@ class IMU
 {
 public:
 
+	enum filter_method
+	{
+		Mahony,
+		Complementary
+	};
+
 	IMU(uint8_t csPin);
 
 	void begin();
 
 	void calibrate();
 
-	void update()
+	void update(filter_method filter = Complementary)
 	{
 		read_raw();
 		apply_calibration();
 		apply_inversion_and_scale();
-		apply_filters();
-		update_fusion();
-		calculate_angles();
+		apply_smoothing_filters();
+
+		switch (filter)
+		{
+			case Complementary: complementary();	break;
+			case Mahony:		mahony();			break;
+		}
 	}
 
 	union sensor_data
@@ -223,20 +233,23 @@ private:
 	void read_raw();
 	void apply_calibration();
 	void apply_inversion_and_scale();
-	void apply_filters();
-	void update_fusion();
-	void calculate_angles();
+	void apply_smoothing_filters();
+
+	// filter methods
+	void mahony();
+	void complementary();
 
 	const float twoKp = 10.0f;		// 2 * proportional gain (Kp)
-	const float twoKi = 0.2f;		// 2 * integral gain (Ki)
+	const float twoKi = 0.1f;		// 2 * integral gain (Ki)
 	
 	float q0, q1, q2, q3;	// quaternion of sensor frame relative to auxiliary frame
 	float integralFBx, integralFBy, integralFBz;  // integral error terms scaled by Ki
 	float invSampleFreq;
 
 	pt1Filter_t ptfilters[6];
+	biquadFilter_t bqfilters[6];
 	const float gyro_cut_off = 15.0f;//8.0f;
-	const float accel_cut_off = 5.0f;//5.0f;
+	const float accel_cut_off = 4.0f;//5.0f;
 
 	sensor_data data;
 	

@@ -21,7 +21,7 @@ void Balance::begin()
 {
 	profile.kp = 5.0f;
 	profile.ki = 0.2f;
-	profile.kd = 1.0f;
+	profile.kd = 0.0f;
 	profile.max_I = 3000.0f;
 	profile.max_Out = 6000.0f;
 	profile.tpa = 100;
@@ -41,7 +41,7 @@ void Balance::begin()
 	m_motor.begin(PROP_ESC_PIN, 1000, 2000);
 	setPropSpeed(1000);
 
-	pt1FilterInit(&rpm_filter, rpm_cut_off_hz, 1.0f / main_loop_hz);
+	pt1FilterInit(&rpm_filter, rpm_cut_off_hz, profile.lpf_dT);
 
 	pinMode(PROP_RPM_PIN, INPUT);
 	attachInterrupt(PROP_RPM_PIN, rpm_interrupt, CHANGE);
@@ -106,9 +106,10 @@ float Balance::updateRPM()
 
 	m_sensed_rpm = pt1FilterApply(&rpm_filter, freq);
 	
-	//Serial.print(freq);
-	//Serial.print("\t");
-	Serial.println(m_sensed_rpm);
+	Serial.print(freq);
+	Serial.print("\t");
+	Serial.print(m_sensed_rpm);
+	Serial.print("\n");
 
 	return m_sensed_rpm;
 }

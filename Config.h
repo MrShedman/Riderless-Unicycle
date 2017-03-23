@@ -8,9 +8,9 @@ void resetPidProfile(pidProfile_t profile[PID_ITEM_COUNT])
 
 	profile[PIDROLL].kp = 80.0f;//12.0f;
 	profile[PIDROLL].ki = 0.02f;//0.25f;
-	profile[PIDROLL].kd = 100.0f;//3.0f;
+	profile[PIDROLL].kd = 50.0f;//3.0f;
 
-	profile[PIDROLL].max_I = 400.0f;
+	profile[PIDROLL].max_I = 300.0f;
 	profile[PIDROLL].max_Out = 400.0f;
 
 	profile[PIDROLL].tpa = 80;

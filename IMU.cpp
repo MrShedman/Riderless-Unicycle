@@ -2,23 +2,6 @@
 #include "IMU.h"
 #include "SPI.h"
 
-#define DEFAULT_SAMPLE_FREQ	512.0f	// sample frequency in Hz
-#define twoKpDef	(2.0f * 5.0f)	// 2 * proportional gain
-#define twoKiDef	(2.0f * 0.1f)	// 2 * integral gain
-
-
-//============================================================================================
-// Functions
-
-//-------------------------------------------------------------------------------------------
-// AHRS algorithm update
-
-//Mahony::Mahony()
-//{
-//	twoKp = twoKpDef;	// 2 * proportional gain (Kp)
-//	twoKi = twoKiDef;	// 2 * integral gain (Ki)
-
-
 IMU::IMU(uint8_t csPin)
 {
 	_csPin = csPin; // SPI CS Pin
@@ -107,13 +90,15 @@ void IMU::begin()
 	for (uint8_t i = 0; i < 3; ++i)
 	{
 		pt1FilterInit(&ptfilters[i], accel_cut_off, 1.0f / sample_rate);
+		biquadFilterInitLPF(&bqfilters[i], accel_cut_off, sample_rate);
 	}
 
 	for (uint8_t i = 3; i < 6; ++i)
 	{
 		pt1FilterInit(&ptfilters[i], gyro_cut_off, 1.0f / sample_rate);
+		biquadFilterInitLPF(&bqfilters[i], gyro_cut_off, sample_rate);
 	}
-
+	
 	writeRegister(INT_PIN_CFG, 0x10);	// INT_ANYRD_2CLEAR
 	writeRegister(INT_ENABLE, 0x01);	// INT enable
 }
@@ -376,15 +361,16 @@ void IMU::apply_inversion_and_scale()
 	*/
 }
 
-void IMU::apply_filters()
+void IMU::apply_smoothing_filters()
 {
 	for (uint8_t i = 0; i < 6; ++i)
 	{
-		data.axis[i] = pt1FilterApply(&ptfilters[i], data.axis[i]);
+		//data.axis[i] = pt1FilterApply(&ptfilters[i], data.axis[i]);
+		data.axis[i] = biquadFilterApply(&bqfilters[i], data.axis[i]);
 	}
 }
 
-void IMU::update_fusion()
+void IMU::mahony()
 {
 	float recipNorm;
 	float halfvx, halfvy, halfvz;
@@ -392,19 +378,23 @@ void IMU::update_fusion()
 	float qa, qb, qc;
 
 	// Convert gyroscope degrees/sec to radians/sec
-	data.gx *= 0.0174533f;
-	data.gy *= 0.0174533f;
-	data.gz *= 0.0174533f;
+	float gx = data.gx * 0.0174533f;
+	float gy = data.gy * 0.0174533f;
+	float gz = data.gz * 0.0174533f;
+
+	float ax = data.ax;
+	float ay = data.ay;
+	float az = data.az;
 	
 	// Compute feedback only if accelerometer measurement valid
 	// (avoids NaN in accelerometer normalisation)
-	if (!((data.ax == 0.0f) && (data.ay == 0.0f) && (data.az == 0.0f))) {
+	if (!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
 
 		// Normalise accelerometer measurement
-		recipNorm = 1.0f / sqrtf(data.ax * data.ax + data.ay * data.ay + data.az * data.az);
-		data.ax *= recipNorm;
-		data.ay *= recipNorm;
-		data.az *= recipNorm;
+		recipNorm = 1.0f / sqrtf(ax * ax + ay * ay + az * az);
+		ax *= recipNorm;
+		ay *= recipNorm;
+		az *= recipNorm;
 
 		// Estimated direction of gravity
 		halfvx = q1 * q3 - q0 * q2;
@@ -413,9 +403,9 @@ void IMU::update_fusion()
 
 		// Error is sum of cross product between estimated
 		// and measured direction of gravity
-		halfex = (data.ay * halfvz - data.az * halfvy);
-		halfey = (data.az * halfvx - data.ax * halfvz);
-		halfez = (data.ax * halfvy - data.ay * halfvx);
+		halfex = (ay * halfvz - az * halfvy);
+		halfey = (az * halfvx - ax * halfvz);
+		halfez = (ax * halfvy - ay * halfvx);
 
 		// Compute and apply integral feedback if enabled
 		if (twoKi > 0.0f)
@@ -424,9 +414,9 @@ void IMU::update_fusion()
 			integralFBx += twoKi * halfex * invSampleFreq;
 			integralFBy += twoKi * halfey * invSampleFreq;
 			integralFBz += twoKi * halfez * invSampleFreq;
-			data.gx += integralFBx;	// apply integral feedback
-			data.gy += integralFBy;
-			data.gz += integralFBz;
+			gx += integralFBx;	// apply integral feedback
+			gy += integralFBy;
+			gz += integralFBz;
 		}
 		else 
 		{
@@ -436,22 +426,22 @@ void IMU::update_fusion()
 		}
 
 		// Apply proportional feedback
-		data.gx += twoKp * halfex;
-		data.gy += twoKp * halfey;
-		data.gz += twoKp * halfez;
+		gx += twoKp * halfex;
+		gy += twoKp * halfey;
+		gz += twoKp * halfez;
 	}
 
 	// Integrate rate of change of quaternion
-	data.gx *= (0.5f * invSampleFreq);		// pre-multiply common factors
-	data.gy *= (0.5f * invSampleFreq);
-	data.gz *= (0.5f * invSampleFreq);
+	gx *= (0.5f * invSampleFreq);		// pre-multiply common factors
+	gy *= (0.5f * invSampleFreq);
+	gz *= (0.5f * invSampleFreq);
 	qa = q0;
 	qb = q1;
 	qc = q2;
-	q0 += (-qb * data.gx - qc * data.gy - q3 * data.gz);
-	q1 += (qa * data.gx + qc * data.gz - q3 * data.gy);
-	q2 += (qa * data.gy - qb * data.gz + q3 * data.gx);
-	q3 += (qa * data.gz + qb * data.gy - qc * data.gx);
+	q0 += (-qb * gx - qc * gy - q3 * gz);
+	q1 += (qa * gx + qc * gz - q3 * gy);
+	q2 += (qa * gy - qb * gz + q3 * gx);
+	q3 += (qa * gz + qb * gy - qc * gx);
 
 	// Normalise quaternion
 	recipNorm = 1.0f / sqrtf(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
@@ -459,10 +449,7 @@ void IMU::update_fusion()
 	q1 *= recipNorm;
 	q2 *= recipNorm;
 	q3 *= recipNorm;
-}
 
-void IMU::calculate_angles()
-{	
 	// compute angles
 	data.roll = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2);
 	data.pitch = asinf(-2.0f * (q1*q3 - q0*q2));
@@ -472,6 +459,24 @@ void IMU::calculate_angles()
 	data.roll *= 57.29578f;
 	data.pitch *= 57.29578f;
 	data.yaw *= 57.29578f;
+}
+
+void IMU::complementary()
+{
+	float accel_angles[2];
+
+	data.roll += data.gx * 1.0f / sample_rate;
+	data.pitch += data.gy * 1.0f / sample_rate;
+
+	float sqrta = sqrtf(data.ay * data.ay + data.az * data.az);
+
+	accel_angles[0] = atan2f(data.ay, data.az) * 180 / M_PI;
+	accel_angles[1] = atan2f(data.ax, sqrta) * 180 / M_PI;
+
+	float tau = 0.98f;
+
+	data.roll = data.roll * tau + accel_angles[0] * (1.0f - tau);
+	data.pitch = data.pitch  * tau + accel_angles[1] * (1.0f - tau);
 }
 
 bool IMU::writeRegister(uint8_t subAddress, uint8_t data)
@@ -499,7 +504,7 @@ bool IMU::writeRegister(uint8_t subAddress, uint8_t data)
 		Serial.print("Error in writing register:");
 		Serial.print(subAddress);
 		Serial.print("\t");
-		Serial.println(subAddress);
+		Serial.println(data);
 		return false;
 	}
 }
