@@ -222,6 +222,11 @@ public:
 		float axis[12];
 	};
 
+	void resetYaw()
+	{
+		data.yaw = 0.0f;
+	}
+
 
 	const sensor_data& get_data() const
 	{
@@ -235,7 +240,7 @@ private:
 	void apply_inversion_and_scale();
 	void apply_smoothing_filters();
 
-	// filter methods
+	// orientation methods
 	void mahony();
 	void complementary();
 
@@ -249,11 +254,11 @@ private:
 	pt1Filter_t ptfilters[6];
 	biquadFilter_t bqfilters[6];
 	const float gyro_cut_off = 15.0f;//8.0f;
-	const float accel_cut_off = 4.0f;//5.0f;
+	const float accel_cut_off = 2.0f;//5.0f;
 
 	sensor_data data;
 	
-	float gyroBias[3] = { 0.15f, -0.21f, 1.27f };
+	float gyroBias[3] = { 63.48f, -23.13f, 110.17f };
 	float accelBias[3] = { 0, 0, 0 };
 
 	const float sample_rate = 1000.0f;

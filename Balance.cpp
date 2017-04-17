@@ -22,8 +22,8 @@ void Balance::begin()
 	profile.kp = 5.0f;
 	profile.ki = 0.2f;
 	profile.kd = 0.0f;
-	profile.max_I = 3000.0f;
-	profile.max_Out = 6000.0f;
+	profile.max_I = 9053.0f;
+	profile.max_Out = 9053.0f;
 	profile.tpa = 100;
 	profile.tpa_breakpoint = 2000;
 	profile.dterm_lpf_hz = 5.0f;
@@ -47,7 +47,6 @@ void Balance::begin()
 	attachInterrupt(PROP_RPM_PIN, rpm_interrupt, CHANGE);
 }
 
-
 void Balance::setPropSpeed(float speed)
 {
 	// found empirically
@@ -68,7 +67,7 @@ void Balance::setPropSpeed(float speed)
 
 	//Serial.println(s);
 
-	s = constrain(s, 1000, 1400);
+	s = constrain(s, 1000, 1500);
 
 	//Serial.println(s);
 
@@ -106,10 +105,10 @@ float Balance::updateRPM()
 
 	m_sensed_rpm = pt1FilterApply(&rpm_filter, freq);
 	
-	Serial.print(freq);
-	Serial.print("\t");
-	Serial.print(m_sensed_rpm);
-	Serial.print("\n");
+	//Serial.print(freq);
+	//Serial.print("\t");
+	//Serial.print(m_sensed_rpm);
+	//Serial.print("\n");
 
 	return m_sensed_rpm;
 }

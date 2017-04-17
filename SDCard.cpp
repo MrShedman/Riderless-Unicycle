@@ -3,6 +3,7 @@
 #include "SdFat.h"
 
 //SdFatSdio sd;
+/*
 
 SdFatSdioEX sdEx;
 
@@ -32,3 +33,4 @@ void sd_begin()
 	Serial.print(micros() - t1);
 	Serial.println("us");
 }
+*/

@@ -31,7 +31,7 @@ struct QuadPayload : public Radio::Payload
 
 	uint32_t size() override
 	{
-		return 8;
+		return 10;
 	}
 
 	void reset() override
@@ -40,12 +40,14 @@ struct QuadPayload : public Radio::Payload
 		yaw = 1500;
 		pitch = 1500;
 		roll = 1500;
+		buttons = 0;
 	}
 
 	int16_t throttle;
 	int16_t roll;
 	int16_t pitch;
 	int16_t yaw;
+	int16_t buttons;
 };
 
 struct QuadAckPayload : public Radio::Payload

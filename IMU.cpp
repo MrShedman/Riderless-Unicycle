@@ -1,6 +1,7 @@
 
 #include "IMU.h"
 #include "SPI.h"
+#include "Utility.h"
 
 IMU::IMU(uint8_t csPin)
 {
@@ -283,33 +284,16 @@ void IMU::read_raw()
 
 void IMU::apply_calibration()
 {
-	/*
 	data.axis[0] -= accelBias[0];
 	data.axis[1] -= accelBias[1];
 	data.axis[2] -= accelBias[2];
 	data.axis[3] -= gyroBias[0];
 	data.axis[4] -= gyroBias[1];
 	data.axis[5] -= gyroBias[2];
-	*/
 }
 
 void IMU::apply_inversion_and_scale()
 {
-	/*
-	Serial.print(data.axis[0]);
-	Serial.print("\t");
-	Serial.print(data.axis[1]);
-	Serial.print("\t");
-	Serial.print(data.axis[2]);
-	Serial.print("\t");
-	Serial.print(data.axis[3]);
-	Serial.print("\t");
-	Serial.print(data.axis[4]);
-	Serial.print("\t");
-	Serial.println(data.axis[5]);
-	*/
-
-///*
 	data.axis[0] *= _accelScale;
 	data.axis[1] *= _accelScale;
 	data.axis[2] *= _accelScale;
@@ -321,52 +305,14 @@ void IMU::apply_inversion_and_scale()
 	data.axis[6] *= _magScaleX;
 	data.axis[7] *= _magScaleY;
 	data.axis[8] *= _magScaleZ;
-
-	data.axis[3] -= gyroBias[0];
-	data.axis[4] -= gyroBias[1];
-	data.axis[5] -= gyroBias[2];
-
-	//*/
-	// custom adjustments
-	// calibration appears broken at least for gyro
-	//data.axis[3] += 10.4f;
-	//data.axis[4] += 8.6f;
-	//data.axis[5] += 8.3f;
-
-	/*
-	Serial.print(accelBias[0]);
-	Serial.print("\t");
-	Serial.print(accelBias[1]);
-	Serial.print("\t");
-	Serial.print(accelBias[2]);
-	Serial.print("\t");
-	Serial.print(gyroBias[0]);
-	Serial.print("\t");
-	Serial.print(gyroBias[1]);
-	Serial.print("\t");
-	Serial.println(gyroBias[2]);
-	*/
-	/*
-	Serial.print(data.axis[0]);
-	Serial.print("\t");
-	Serial.print(data.axis[1]);
-	Serial.print("\t");
-	Serial.print(data.axis[2]);
-	Serial.print("\t");
-	Serial.print(data.axis[3]);
-	Serial.print("\t");
-	Serial.print(data.axis[4]);
-	Serial.print("\t");
-	Serial.println(data.axis[5]);
-	*/
 }
 
 void IMU::apply_smoothing_filters()
 {
 	for (uint8_t i = 0; i < 6; ++i)
 	{
-		//data.axis[i] = pt1FilterApply(&ptfilters[i], data.axis[i]);
-		data.axis[i] = biquadFilterApply(&bqfilters[i], data.axis[i]);
+		data.axis[i] = pt1FilterApply(&ptfilters[i], data.axis[i]);
+		//data.axis[i] = biquadFilterApply(&bqfilters[i], data.axis[i]);
 	}
 }
 
@@ -468,12 +414,19 @@ void IMU::complementary()
 	data.roll += data.gx * 1.0f / sample_rate;
 	data.pitch += data.gy * 1.0f / sample_rate;
 
+	float yaw = data.gz * 1.0f / sample_rate;
+
+	yaw = applyDeadbandf(yaw, 0.001f);
+	data.yaw += yaw;
+
+	data.yaw = fmodf(data.yaw, 360.0f);
+
 	float sqrta = sqrtf(data.ay * data.ay + data.az * data.az);
 
 	accel_angles[0] = atan2f(data.ay, data.az) * 180 / M_PI;
 	accel_angles[1] = atan2f(data.ax, sqrta) * 180 / M_PI;
 
-	float tau = 0.98f;
+	float tau = 0.999f;
 
 	data.roll = data.roll * tau + accel_angles[0] * (1.0f - tau);
 	data.pitch = data.pitch  * tau + accel_angles[1] * (1.0f - tau);

@@ -17,9 +17,9 @@ QuadAckPayload ackPayload;
 #include "SDCard.h"
 #include "Utility.h"
 
-pt1Filter_t pitch_filter;
-
 pt1Filter_t rc_filters[4];
+
+pt1Filter_t pitch_filter;
 
 typedef enum
 {
@@ -41,33 +41,59 @@ void initPIDS(const pidProfile_t profile[PID_ITEM_COUNT])
 float pid_setpoint[PID_ITEM_COUNT];
 
 const float deadzoneBuffer = 8.0;
-const float deadzoneMin = 1500 - deadzoneBuffer;
-const float deadzoneMax = 1500 + deadzoneBuffer;
-const float maxRollRate = 5.0f;
-const float setpoint = (500 - deadzoneBuffer) / maxRollRate;
+//const float deadzoneMin = 1500 - deadzoneBuffer;
+//const float deadzoneMax = 1500 + deadzoneBuffer;
+//const float maxRollRate = 0.1f;
+//const float setpoint = (500 - deadzoneBuffer) / maxRollRate;
 
 float rcCommand[4];
+float rcRates[4];
 
-IMU imu;
+float calcSetpoints(float rc, float rate, float deadzone)
+{
+	const float deadzoneMin = 1500 - deadzone;
+	const float deadzoneMax = 1500 + deadzone;
 
-float main_loop_hz = 200;
+	float setpoint = 0.0f;
 
-volatile int i = 0;
+	if (rc > deadzoneMax)
+	{
+		setpoint = (rc - deadzoneMax) / (500 - deadzone)  * rate;
+	}
+	else if (rc < deadzoneMin)
+	{
+		setpoint = (rc - deadzoneMin) / (500 - deadzone) *  rate;
+	}
 
-volatile bool imu_data_ready = false;
-volatile uint32_t int_count = 0;
+	return setpoint;
+}
+
+void rcCommandFilter()
+{
+	payload.throttle = constrain(payload.throttle, 1000, 2000);
+	payload.roll = constrain(payload.roll, 1000, 2000);
+	payload.pitch = constrain(payload.pitch, 1000, 2000);
+	payload.yaw = constrain(payload.yaw, 1000, 2000);
+
+	rcCommand[THROTTLE] = pt1FilterApply(&rc_filters[0], payload.throttle);
+	rcCommand[ROLL] = pt1FilterApply(&rc_filters[1], payload.roll);
+	rcCommand[PITCH] = pt1FilterApply(&rc_filters[2], payload.pitch);
+	rcCommand[YAW] = pt1FilterApply(&rc_filters[3], payload.yaw);
+}
+
+IMU imu(IMU_CS_PIN);
 
 void imu_interrupt()
 {
-	int_count++;
 	imu.update();
 	auto& d = imu.get_data();
 
 	axisPID[PIDROLL].update(d.roll, pid_setpoint[PIDROLL], rcCommand[THROTTLE], 2000);
 	axisPID[PIDPITCH].update(d.pitch, pid_setpoint[PIDPITCH], rcCommand[THROTTLE], 2000);
-	axisPID[PIDYAW].update(d.gz, pid_setpoint[PIDYAW], rcCommand[THROTTLE], 2000);
+	axisPID[PIDYAW].update(-d.gz, pid_setpoint[PIDYAW], rcCommand[THROTTLE], 2000);
 }
 
+float main_loop_hz = 200;
 uint32_t loop_counter;
 uint32_t loop_start_time;
 
@@ -145,78 +171,33 @@ void setup()
 
 	radio.begin();
 
+	for (uint8_t i = 0; i < main_loop_hz; ++i)
+	{
+		radio.update();
+		rcCommandFilter();
+
+		delayMicroseconds(1e6 / main_loop_hz);
+	}
+
+	rcRates[THROTTLE] = 1.0f;
+	rcRates[ROLL] = 5.0f;
+	rcRates[PITCH] = 1.0f;
+	rcRates[YAW] = 50.0f;
+
 	//begin();
 	//pinMode(BEEP_PIN, OUTPUT);
 	//beeper(BEEPER_GYRO_CALIBRATED);
 }
 
-bool radio_bug = false;
-QuadPayload bug_payload;
-uint32_t bug_cc = 0;
-
-const uint32_t settle_time = 1000;
-const uint32_t sample_rate = 200;
-const uint32_t increment = 10;
-const uint32_t limit = 1500;
-
-void loop() 
+void loop()
 {
 	//sd_begin();
 
 	radio.update();
 
-	if (payload.throttle < 1000 || payload.throttle > 2000 ||
-		payload.roll < 1000 || payload.roll > 2000 ||
-		payload.pitch < 1000 || payload.pitch > 2000 ||
-		payload.yaw < 1000 || payload.yaw > 2000)
-	{
-		bug_payload = payload;
-		radio_bug = true;
-	}
+	rcCommandFilter();
 
-	if (radio_bug)
-	{
-		if (bug_cc < 10)
-		{
-		Serial.print("Radio bug!!!");
-		Serial.print(",");
-		Serial.print(bug_payload.throttle);
-		Serial.print(",");
-		Serial.print(bug_payload.roll);
-		Serial.print(",");
-		Serial.print(bug_payload.pitch);
-		Serial.print(",");
-		Serial.println(bug_payload.yaw);
-		}
-		//delay(100);
-		bug_cc++;
-
-		//return;
-	}
-	else
-	{
-		//Serial.print(payload.throttle);
-		//Serial.print(",");
-		//Serial.print(payload.roll);
-		//Serial.print(",");
-		//Serial.print(payload.pitch);
-		//Serial.print(",");
-		//Serial.println(payload.yaw);
-	}
-
-	payload.throttle = constrain(payload.throttle, 1000, 2000);
-	payload.roll = constrain(payload.roll, 1000, 2000);
-	payload.pitch = constrain(payload.pitch, 1000, 2000);
-	payload.yaw = constrain(payload.yaw, 1000, 2000);
-
-
-	//Serial.print(payload.throttle);
-	//Serial.print(",");
-
-	rcCommand[THROTTLE] = pt1FilterApply(&rc_filters[0], payload.throttle);
-	rcCommand[ROLL] = pt1FilterApply(&rc_filters[1], payload.roll);
-	rcCommand[PITCH] = pt1FilterApply(&rc_filters[2], payload.pitch);
-	rcCommand[YAW] = pt1FilterApply(&rc_filters[3], payload.yaw);
+	//Serial.println(payload.buttons);
 
 	//Serial.println(rcCommand[THROTTLE]);
 
@@ -240,6 +221,8 @@ void loop()
 		axisPID[PIDROLL].reset();
 		axisPID[PIDPITCH].reset();
 		axisPID[PIDYAW].reset();
+
+		imu.resetYaw();
 	}
 
 	//Stopping the motors: throttle low and yaw right.
@@ -248,10 +231,15 @@ void loop()
 		armed_state = DISARMED;
 	}
 
+	pid_setpoint[PIDROLL] = calcSetpoints(rcCommand[ROLL], rcRates[ROLL], deadzoneBuffer);
+	pid_setpoint[PIDPITCH] = calcSetpoints(rcCommand[PITCH], rcRates[PITCH], deadzoneBuffer);
+	pid_setpoint[PIDYAW] = calcSetpoints(rcCommand[YAW], rcRates[YAW], deadzoneBuffer);
+
+	/*
 	pid_setpoint[PIDROLL] = 0;
 	//We need a little dead band of 16us for better results.
-	if (rcCommand[ROLL] > deadzoneMax)pid_setpoint[PIDROLL] = (rcCommand[ROLL] - deadzoneMax) / setpoint;
-	else if (rcCommand[ROLL] < deadzoneMin)pid_setpoint[PIDROLL] = (rcCommand[ROLL] - deadzoneMin) / setpoint;
+	if (rcCommand[ROLL] > deadzoneMax)pid_setpoint[PIDROLL] = (rcCommand[ROLL] - deadzoneMax) / (500 - deadzoneBuffer)  *  rcRates[ROLL];
+	else if (rcCommand[ROLL] < deadzoneMin)pid_setpoint[PIDROLL] = (rcCommand[ROLL] - deadzoneMin) / (500 - deadzoneBuffer) *  rcRates[ROLL];
 
 	// offset due to CoM being slightly off-centre
 	// found from CAD model
@@ -259,13 +247,15 @@ void loop()
 
 	pid_setpoint[PIDPITCH] = 0;
 	//We need a little dead band of 16us for better results.
-	if (rcCommand[PITCH] > deadzoneMax)pid_setpoint[PIDPITCH] = (rcCommand[PITCH] - deadzoneMax) / setpoint;
-	else if (rcCommand[PITCH] < deadzoneMin)pid_setpoint[PIDPITCH] = (rcCommand[PITCH] - deadzoneMin) / setpoint;
+	if (rcCommand[PITCH] > deadzoneMax)pid_setpoint[PIDPITCH] = (rcCommand[PITCH] - deadzoneMax) / (500 - deadzoneBuffer) *  rcRates[PITCH];
+	else if (rcCommand[PITCH] < deadzoneMin)pid_setpoint[PIDPITCH] = (rcCommand[PITCH] - deadzoneMin) / (500 - deadzoneBuffer) *  rcRates[PITCH];
 
 	pid_setpoint[PIDYAW] = 0;
 	//We need a little dead band of 16us for better results.
-	if (rcCommand[YAW] > deadzoneMax)pid_setpoint[PIDYAW] = (rcCommand[YAW] - deadzoneMax) / setpoint;
-	else if (rcCommand[YAW] < deadzoneMin)pid_setpoint[PIDYAW] = (rcCommand[YAW] - deadzoneMin) / setpoint;
+	if (rcCommand[YAW] > deadzoneMax)pid_setpoint[PIDYAW] = (rcCommand[YAW] - deadzoneMax) / (500 - deadzoneBuffer) * rcRates[YAW];
+	else if (rcCommand[YAW] < deadzoneMin)pid_setpoint[PIDYAW] = (rcCommand[YAW] - deadzoneMin) / (500 - deadzoneBuffer) *  rcRates[YAW];
+
+	*/
 
 	float motor_speed = 1000;
 
@@ -274,8 +264,18 @@ void loop()
 		motor_speed = rcCommand[THROTTLE];
 	}
 
-	float servo1_speed = axisPID[PIDROLL].getOutput() - axisPID[PIDYAW].getOutput();
-	float servo2_speed = axisPID[PIDROLL].getOutput() + axisPID[PIDYAW].getOutput();
+	float servo1_speed = axisPID[PIDROLL].getOutput();
+	float servo2_speed = axisPID[PIDROLL].getOutput();
+
+	if (payload.buttons == 0)
+	{
+		servo1_speed -= axisPID[PIDYAW].getOutput();
+		servo2_speed += axisPID[PIDYAW].getOutput();
+
+		//pid_setpoint[PIDROLL] = pid_setpoint[PIDYAW] * 0.01f;
+	}
+
+	Serial.println(pid_setpoint[PIDROLL]);
 
 	servo1_speed = mapf(servo1_speed, -pid_profile[PIDROLL].max_Out, pid_profile[PIDROLL].max_Out, 1000, 2000);
 	servo2_speed = mapf(servo2_speed, -pid_profile[PIDROLL].max_Out, pid_profile[PIDROLL].max_Out, 1000, 2000);
@@ -286,7 +286,7 @@ void loop()
 	balance.setPropSpeed(motor_speed);
 	balance.setServoPositions(servo1_speed, servo2_speed);
 
-	float rpm = 0.0f;// (float)mapf(rcCommand[ROLL] , 1000, 2000, -300, 300);
+	float rpm = mapf(rcCommand[ROLL] , 1000, 2000, -300, 300);
 	
 	if (abs(rpm) < 5.0f)
 	{
@@ -311,8 +311,10 @@ void loop()
 	//Serial.print(current_pid);
 	//Serial.print("\t");
 
-	float current = pt1FilterApply(&pitch_filter, current_pid);
+	float current = current_pid;// pt1FilterApply(&pitch_filter, current_pid);
 	
+	//Serial.println(pid_setpoint[PIDROLL]);
+
 	//Serial.print(current);
 	//Serial.print("\t");
 
@@ -322,21 +324,37 @@ void loop()
 	}
 
 	const float max_current = 10.0f;
-	const float max_duty = 0.3f;
+	const float max_duty = 0.2f;
 
 	//current = mapf(current, -pid_profile[PIDPITCH].max_Out, pid_profile[PIDPITCH].max_Out, -max_current, max_current);
 	current = mapf(current, -pid_profile[PIDPITCH].max_Out, pid_profile[PIDPITCH].max_Out, -max_duty, max_duty);
 
-	//Serial.println(current);
-//	Serial.print("\t");
+	float in = mapf(rcCommand[PITCH], 1000, 2000, -1.0f, 1.0f);
 
-	if (abs(current) < 0.05f)
+	//in = applyDeadbandf(in, 0.05f);
+
+	float duty_rc = 0.0f;
+
+//	Serial.println(in * 100);
+
+	if (in > 0.05f)
 	{
-		current = 0.0f;
+		duty_rc = mapf(in, 0.00f, 1.0f, 0.05f, max_duty);
+	}
+	else if (in < -0.05f)
+	{
+		duty_rc = mapf(in, -1.0f, 0.00f, -max_duty, -0.05f);
 	}
 
-	//vesc.setCurrent(current * -1.0f);// current*0.03f);
-	//vesc.setDuty(current * -1.0f);
+	//float duty_rc = mapf(in, 1000, 2000, -max_duty, max_duty);
+
+	if (armed_state != ARMED)
+	{
+		duty_rc = 0.0f;
+	}
+
+	vesc.setDuty(duty_rc);
+
 	//printData();
 	
 	while (micros() - loop_start_time < 1e6 / main_loop_hz);
@@ -346,6 +364,24 @@ void loop()
 
 void printData()
 {
+	Serial.println(imu.get_data().yaw);
+	return;
+	/*auto &d = imu.get_data();
+
+	Serial.print(d.axis[0]);
+	Serial.print("\t");
+	Serial.print(d.axis[1]);
+	Serial.print("\t");
+	Serial.print(d.axis[2]);
+	Serial.print("\t");
+	Serial.print(d.axis[3]);
+	Serial.print("\t");
+	Serial.print(d.axis[4]);
+	Serial.print("\t");
+	Serial.println(d.axis[5]);
+
+	return;*/
+
 	///*
 	Serial.print(imu.get_data().roll);
 	Serial.print("\t");

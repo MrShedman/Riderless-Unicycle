@@ -38,7 +38,7 @@ void ParkingLegs::begin()
 	stepper.setStepMode(1);
 
 	// Enable the motor outputs.
-	//stepper.enableDriver();
+	stepper.enableDriver();
 
 	timer.begin(stepper_driver, 1e6 / drive_frequency);
 	timer.priority(255);
@@ -69,12 +69,12 @@ void ParkingLegs::setRPM(float rpm)
 {
 	if (freq != 0.0f && rpm == 0.0f)
 	{
-		stepper.sleep();
+		//stepper.sleep();
 	}
 
 	if (freq == 0.0f && rpm != 0.0f)
 	{
-		stepper.sleepStop();
+		//stepper.sleepStop();
 	}
 
 	freq = constrain((rpm / 60.0f) * (float)num_steps, -(float)max_step_rate, (float)max_step_rate);
